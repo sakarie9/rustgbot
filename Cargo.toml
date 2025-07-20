@@ -1,5 +1,5 @@
 [workspace]
-members = ["telebotrs-main", "processor/bili", "processor/nga", "common"]
+members = ["rustgbot", "processor/bili", "processor/nga", "common"]
 resolver = "2"
 
 [workspace.dependencies]

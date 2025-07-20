@@ -1,10 +1,10 @@
 [package]
-name = "telebotrs-main"
+name = "rustgbot"
 version = "0.1.0"
 edition = "2024"
 
 [[bin]]
-name = "telebotrs"
+name = "rustgbot"
 path = "src/main.rs"
 
 [dependencies]
