@@ -1,0 +1,44 @@
+[workspace]
+members = ["telebotrs-main", "processor/bili", "processor/nga", "common"]
+resolver = "2"
+
+[workspace.dependencies]
+# Core async runtime
+tokio = { version = "1.46", default-features = false, features = [
+    "macros",
+    "rt-multi-thread",
+] }
+
+# HTTP client
+reqwest = { version = "0.12", default-features = false, features = [
+    "rustls-tls",
+    "charset",
+] }
+
+# Logging
+log = "0.4"
+env_logger = "0.11"
+
+# Error handling
+anyhow = "1.0"
+
+# Text processing
+regex = "1.11"
+scraper = "0.23"
+tabled = "0.20"
+
+# Utilities
+url = "2.5"
+rand = "0.9"
+dotenv = "0.15"
+
+# Telegram bot framework
+teloxide = { version = "0.17", default-features = false, features = [
+    "macros",
+    "rustls",
+    "ctrlc_handler",
+] }
+
+[profile.release]
+lto = true
+strip = true

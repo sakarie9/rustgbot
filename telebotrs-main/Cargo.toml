@@ -1,0 +1,23 @@
+[package]
+name = "telebotrs-main"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "telebotrs"
+path = "src/main.rs"
+
+[dependencies]
+# Workspace crates
+processor-bili = { path = "../processor/bili" }
+processor-nga = { path = "../processor/nga" }
+common = { path = "../common" }
+
+# External dependencies - using workspace versions
+teloxide = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
+tokio = { workspace = true }
+regex = { workspace = true }
+dotenv = { workspace = true }
+url = { workspace = true }

@@ -1,0 +1,20 @@
+[package]
+name = "processor-nga"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# Workspace crates
+common = { path = "../../common" }
+
+# External dependencies
+log = { workspace = true }
+reqwest = { workspace = true }
+url = { workspace = true }
+anyhow = { workspace = true }
+rand = { workspace = true }
+scraper = { workspace = true }
+regex = { workspace = true }
+dotenv = { workspace = true }
+tokio = { workspace = true }
+tabled = { workspace = true }
