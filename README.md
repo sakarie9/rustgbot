@@ -19,12 +19,9 @@
 
 ### 安装运行
 
-1. **克隆项目**
+1. **获取二进制**
 
-   ```bash
-   git clone <repository-url>
-   cd telebotrs
-   ```
+    从 Releases 下载对应环境的二进制文件
 
 2. **配置环境**
 
@@ -33,40 +30,13 @@
    echo "TELOXIDE_TOKEN=your_bot_token_here" > .env
    ```
 
-3. **编译运行**
-
-   ```bash
-   # 开发模式
-   cargo run --bin rustgbot
-   
-   # 发布模式
-   cargo build --release
-   ./target/release/rustgbot
-   ```
-
 ### Docker 部署
 
-1. **构建镜像**
+从项目中下载 compose.yaml，修改环境变量
 
-   ```bash
-   # 编译发布版本
-   cargo build --release
-   
-   # 复制二进制文件
-   cp target/release/rustgbot .
-   
-   # 构建 Docker 镜像
-   docker build -t telebotrs .
-   ```
-
-2. **运行容器**
-
-   ```bash
-   docker run -d \
-     --name telebotrs \
-     -e TELOXIDE_TOKEN=your_bot_token_here \
-     telebotrs
-   ```
+```bash
+docker compose up
+```
 
 ## 使用方法
 

@@ -1,0 +1,9 @@
+services:
+  rustgbot:
+    image: ghcr.io/sakarie9/rustgbot:latest
+    container_name: rustgbot
+    environment:
+      - TELOXIDE_TOKEN=your_telegram_bot_token_here
+      # - NGA_UID=your_nga_uid_here
+      # - NGA_CID=your_nga_cid_here
+    restart: unless-stopped
