@@ -1,0 +1,111 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+
+version: 2
+
+# Project name should ideally match the project name in your Cargo.toml.
+project_name: "rustgbot"
+
+before:
+  hooks:
+    - rustup default stable
+    - cargo install --locked cargo-zigbuild
+    # - cargo install --locked cross --git https://github.com/cross-rs/cross
+    - cargo fetch --locked
+
+builds:
+  - id: linux-amd64-gnu
+    builder: rust
+    targets:
+      - x86_64-unknown-linux-gnu
+  # - id: linux-amd64-musl
+  #   builder: rust
+  #   targets:
+  #     - x86_64-unknown-linux-musl
+  - id: linux-arm64-gnu
+    builder: rust
+    targets:
+      - aarch64-unknown-linux-gnu
+  # - id: linux-arm64-musl
+  #   builder: rust
+  #   targets:
+  #     - aarch64-unknown-linux-musl
+  - id: windows-amd64-gnu
+    builder: rust
+    # tool: cross
+    # command: build
+    targets:
+      - x86_64-pc-windows-gnu
+
+# Creates archives for each target.
+archives:
+  - formats: tar.gz
+    # this name template makes the OS and Arch compatible with the results of `uname`.
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+    #  {{- if contains .Target "musl" }}-musl
+    #  {{- else if contains .Target "gnu" }}-gnu
+    #  {{- end }}
+
+    # use zip for windows archives
+    format_overrides:
+      - goos: windows
+        formats: zip
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^build:"
+
+##DOCKER_START##
+dockers:
+  - image_templates:
+      - "ghcr.io/sakarie9/rustgbot:{{ .Tag }}-arm64"
+    dockerfile: Dockerfile
+    goarch: arm64
+    # ids:
+    #   - linux-arm64-musl
+    use: buildx
+    build_flag_templates:
+      - "--pull"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.name={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--label=org.opencontainers.image.source={{.GitURL}}"
+      - "--platform=linux/arm64"
+  - image_templates:
+      - "ghcr.io/sakarie9/rustgbot:{{ .Tag }}-amd64"
+    dockerfile: Dockerfile
+    goarch: amd64
+    # ids:
+    #   - linux-amd64-musl
+    use: buildx
+    build_flag_templates:
+      - "--pull"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.name={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--label=org.opencontainers.image.source={{.GitURL}}"
+      - "--platform=linux/amd64"
+
+# Here we join both images into a Docker manifest.
+docker_manifests:
+  - name_template: "ghcr.io/sakarie9/rustgbot:{{ .Tag }}"
+    image_templates:
+      - "ghcr.io/sakarie9/rustgbot:{{ .Tag }}-arm64"
+      - "ghcr.io/sakarie9/rustgbot:{{ .Tag }}-amd64"
+  - name_template: "ghcr.io/sakarie9/rustgbot:latest"
+    image_templates:
+      - "ghcr.io/sakarie9/rustgbot:{{ .Tag }}-arm64"
+      - "ghcr.io/sakarie9/rustgbot:{{ .Tag }}-amd64"
+##DOCKER_END##
