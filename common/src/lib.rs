@@ -30,7 +30,7 @@ pub async fn get_gif_bytes(url: &str) -> Result<Vec<u8>> {
     if let Some(content_length) = head_response.headers().get("content-length") {
         if let Ok(size_str) = content_length.to_str() {
             if let Ok(size) = size_str.parse::<usize>() {
-                log::info!(
+                log::debug!(
                     "File size: {} bytes ({:.2} MB)",
                     size,
                     size as f64 / 1024.0 / 1024.0
