@@ -8,8 +8,6 @@ use crate::utils::{
 mod tests;
 mod utils;
 
-const UA: &str = "NGA_skull/6.0.5(iPhone10,3;iOS 12.0.1)";
-
 /// NGA 模块的错误类型
 #[derive(Debug)]
 pub enum NGAError {
@@ -129,7 +127,7 @@ async fn get_nga_html(url: &str) -> NGAResult<String> {
     let client = reqwest::Client::new();
     let response = client
         .get(url)
-        .header("User-Agent", UA)
+        .header("User-Agent", common::NGA_UA)
         .header("Cookie", get_nga_cookie())
         .send()
         .await?;

@@ -5,3 +5,6 @@ edition = "2024"
 
 [dependencies]
 # 只包含工具函数需要的最小依赖
+reqwest = { workspace = true }
+anyhow = { workspace = true }
+log = { workspace = true }

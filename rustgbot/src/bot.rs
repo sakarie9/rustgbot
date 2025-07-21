@@ -1,3 +1,5 @@
+use teloxide::ApiError;
+use teloxide::RequestError;
 use teloxide::prelude::*;
 use teloxide::types::{
     InputFile, InputMedia, InputMediaPhoto, Message, MessageId, ParseMode, ReplyParameters,
@@ -25,7 +27,12 @@ pub async fn send_photo(
     if photo_urls.is_empty() {
         send_reply_text(bot, chat_id, message_id, text).await
     } else if photo_urls.len() == 1 {
-        // 如果只有一个图片链接，直接发送单张图片
+        // 如果只有一个图片链接，且后缀为gif，则发送为GIF
+        if photo_urls[0].ends_with(".gif") {
+            let gif_url = photo_urls[0].clone();
+            return send_gif_upload(bot, chat_id, message_id, gif_url, text).await;
+        }
+        // 如果只有一个图片链接，发送单张图片
         send_photo_single(bot, chat_id, message_id, photo_urls[0].clone(), text).await
     } else {
         // 如果有多张图片，发送媒体组
@@ -40,6 +47,32 @@ pub async fn send_photo(
             .await
             .map(|mut messages| messages.remove(0))
     }
+}
+
+async fn send_gif_upload(
+    bot: &Bot,
+    chat_id: ChatId,
+    message_id: MessageId,
+    gif_url: String,
+    caption: String,
+) -> ResponseResult<Message> {
+    // 使用 map_err 转换错误类型，这样可以直接使用 ? 操作符
+    let gif_bytes = common::get_gif_bytes(&gif_url).await.map_err(|e| {
+        log::warn!("Failed to download GIF from {}: {}", gif_url, e);
+        RequestError::Api(ApiError::Unknown(format!(
+            "Failed to download GIF from {}: {}",
+            gif_url, e
+        )))
+    })?;
+
+    let gif = InputFile::memory(gif_bytes).file_name("animation.gif");
+    log::info!("Successfully downloaded and sending GIF: {}", gif_url);
+
+    bot.send_animation(chat_id, gif)
+        .reply_parameters(ReplyParameters::new(message_id))
+        .parse_mode(ParseMode::Html)
+        .caption(caption)
+        .await
 }
 
 async fn send_photo_single(

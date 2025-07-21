@@ -6,7 +6,8 @@ mod nga_tests {
     #[tokio::test]
     async fn test_get_nga_page() {
         dotenv().ok();
-        let url = "https://ngabbs.com/read.php?tid=44416669";
+        let url = "https://ngabbs.com/read.php?tid=44662667";
+        // let url = "https://ngabbs.com/read.php?tid=44416669";
         // let url = "https://ngabbs.com/read.php?tid=21929866";
         // let url = "https://ngabbs.com/read.php?tid=41814733";
         let page = NGAFetcher::fetch_page(url).await.ok().unwrap();
