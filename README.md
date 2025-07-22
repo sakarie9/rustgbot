@@ -62,5 +62,5 @@ Bot 会自动监听群组和私聊中的消息，当检测到支持的链接时�
 | 环境变量 | 说明 | 必需 |
 |---------|------|------|
 | `TELOXIDE_TOKEN` | Telegram Bot Token | ✅ |
-| `NGA_UID` | NGA cookie 用于登录可看的帖子的访问 | ❌ |
-| `NGA_UID` | NGA cookie 用于登录可看的帖子的访问 | ❌ |
+| `NGA_UID` | NGA cookie 用于游客不可见的帖子的访问 | ❌ |
+| `NGA_UID` | NGA cookie 用于游客不可见的帖子的访问 | ❌ |
