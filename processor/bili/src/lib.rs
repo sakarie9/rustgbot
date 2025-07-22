@@ -3,7 +3,6 @@
 //! 这个模块提供了处理BiliBili (b23.tv) 短链接重定向的功能。
 
 use anyhow::{Result, anyhow};
-use log::info;
 use reqwest::Client;
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
@@ -22,7 +21,7 @@ pub async fn get_b23_redirect(short_url: &str) -> Result<String> {
     {
         let cache = get_b23_cache().lock().unwrap();
         if let Some(cached_url) = cache.get(short_url) {
-            info!("Cache hit for {} -> {}", short_url, cached_url);
+            log::debug!("Cache hit for {} -> {}", short_url, cached_url);
             return Ok(cached_url.clone());
         }
     }

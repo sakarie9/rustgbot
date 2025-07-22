@@ -1,5 +1,4 @@
 use dotenv::dotenv;
-use log::info;
 use regex::Regex;
 use std::future::Future;
 use std::pin::Pin;
@@ -11,6 +10,7 @@ use processor_bili;
 use processor_nga::{self, NGAParsed};
 
 mod bot;
+mod tests;
 
 static LINK_PROCESSORS: OnceLock<Vec<LinkProcessor>> = OnceLock::new();
 
@@ -31,8 +31,9 @@ struct ProcessResult {
 type ProcessResultAsync = Pin<Box<dyn Future<Output = ProcessResult> + Send>>;
 
 enum ProcessFn {
-    Sync(fn(&str) -> ProcessResult),
-    Async(fn(&str) -> ProcessResultAsync),
+    // &[&str] 为所有捕获组的字符串切片
+    Sync(fn(&[&str]) -> ProcessResult),
+    Async(fn(&[&str]) -> ProcessResultAsync),
 }
 
 struct LinkProcessor {
@@ -41,14 +42,14 @@ struct LinkProcessor {
 }
 
 impl LinkProcessor {
-    fn new_sync(pattern: &str, process_fn: fn(&str) -> ProcessResult) -> Self {
+    fn new_sync(pattern: &str, process_fn: fn(&[&str]) -> ProcessResult) -> Self {
         Self {
             regex: Regex::new(pattern).unwrap(),
             process_fn: ProcessFn::Sync(process_fn),
         }
     }
 
-    fn new_async(pattern: &str, process_fn: fn(&str) -> ProcessResultAsync) -> Self {
+    fn new_async(pattern: &str, process_fn: fn(&[&str]) -> ProcessResultAsync) -> Self {
         Self {
             regex: Regex::new(pattern).unwrap(),
             process_fn: ProcessFn::Async(process_fn),
@@ -56,39 +57,53 @@ impl LinkProcessor {
     }
 }
 
+// \b 为了区分 fixupx.com 和 x.com
+pub const REGEX_X_LINK: &str =
+    r"(?:https?://)?\b(?:x\.com|(?:www\.)?twitter\.com)/(\w+)/status/(\d+)";
+pub const REGEX_BILI_LINK: &str = r"(?:https?://)?(?:b23\.tv|bili2233\.cn)/([a-zA-Z0-9]+)";
+pub const REGEX_NGA_LINK: &str = r"(?:https?://(?:bbs\.nga\.cn|ngabbs\.com|nga\.178\.com|bbs\.gnacn\.cc)[-a-zA-Z0-9@:%_\+.~#?&//=]*)";
+
 fn init_processors() -> Vec<LinkProcessor> {
     vec![
-        LinkProcessor::new_sync(
-            r"(?:https?://)?(?:x\.com|www\.twitter\.com)/(\w+)/status/(\d+)",
-            process_x_link,
-        ),
-        LinkProcessor::new_async(
-            r"(?:https?://)?(?:b23\.tv|bili2233.cn)/([a-zA-Z0-9]+)",
-            process_bili_link,
-        ),
-        LinkProcessor::new_async(
-            r"(?:https?://(?:bbs\.nga\.cn|ngabbs\.com|nga\.178\.com|bbs\.gnacn\.cc)[-a-zA-Z0-9@:%_\+.~#?&//=]*)",
-            process_nga_link,
-        ),
+        LinkProcessor::new_sync(REGEX_X_LINK, process_x_link),
+        LinkProcessor::new_async(REGEX_BILI_LINK, process_bili_link),
+        LinkProcessor::new_async(REGEX_NGA_LINK, process_nga_link),
     ]
 }
 
 // 各种链接处理函数
-fn process_x_link(link: &str) -> ProcessResult {
-    info!("Processing X link: {}", link);
-    let processed = link
-        .replace("x.com", "fxtwitter.com")
-        .replace("www.twitter.com", "fxtwitter.com");
+fn process_x_link(captures: &[&str]) -> ProcessResult {
+    let link = captures[0]; // 整个匹配的链接
+    log::info!("Processing X link: {}", link);
+
+    // 使用捕获组
+    // captures[1] 是用户名，captures[2] 是帖子ID
+    let processed = if captures.len() >= 3 {
+        let username = captures[1];
+        let status_id = captures[2];
+        log::debug!(
+            "X link details - Username: {}, Status ID: {}",
+            username,
+            status_id
+        );
+        let processed = format!("https://fxtwitter.com/{}/status/{}", username, status_id);
+        Some(BotResponse::Text(processed))
+    } else {
+        let error = format!("Failed to process X link\n{}", link);
+        log::warn!("{}", error);
+        Some(BotResponse::Error(error))
+    };
 
     ProcessResult {
         original: link.to_string(),
-        processed: Some(BotResponse::Text(processed)),
+        processed,
     }
 }
 
-fn process_bili_link(link: &str) -> ProcessResultAsync {
-    info!("Processing BiliBili link: {}", link);
-    let link = link.to_string();
+fn process_bili_link(captures: &[&str]) -> ProcessResultAsync {
+    let link = captures[0].to_string(); // 整个匹配的链接
+    log::info!("Processing BiliBili link: {}", link);
+
     Box::pin(async move {
         let result = processor_bili::get_b23_redirect(&link).await;
         let processed = match result {
@@ -102,13 +117,14 @@ fn process_bili_link(link: &str) -> ProcessResultAsync {
 
         ProcessResult {
             original: link,
-            processed: processed,
+            processed,
         }
     })
 }
 
-fn process_nga_link(link: &str) -> ProcessResultAsync {
-    info!("Processing NGA link: {}", link);
+fn process_nga_link(captures: &[&str]) -> ProcessResultAsync {
+    let link = captures[0]; // 整个匹配的链接
+    log::info!("Processing NGA link: {}", link);
     let link = link.to_string();
     Box::pin(async move {
         let result = processor_nga::NGAFetcher::parse(&link).await;
@@ -179,11 +195,16 @@ async fn process_links(text: &str) -> Option<Vec<BotResponse>> {
 
     // 找到所有链接并处理
     for processor in processors {
-        for captures in processor.regex.find_iter(text) {
-            let link = captures.as_str();
+        for captures in processor.regex.captures_iter(text) {
+            // 收集所有捕获组
+            let capture_groups: Vec<&str> = captures
+                .iter()
+                .filter_map(|m| m.map(|m| m.as_str()))
+                .collect();
+
             let result = match &processor.process_fn {
-                ProcessFn::Sync(func) => func(link),
-                ProcessFn::Async(func) => func(link).await,
+                ProcessFn::Sync(func) => func(&capture_groups),
+                ProcessFn::Async(func) => func(&capture_groups).await,
             };
 
             if let Some(result) = result.processed {
