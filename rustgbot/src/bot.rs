@@ -24,6 +24,7 @@ pub async fn send_photo(
     message_id: MessageId,
     photo_urls: Vec<String>,
     text: String,
+    spoiler: bool,
 ) -> ResponseResult<Message> {
     if photo_urls.is_empty() {
         send_reply_text(bot, chat_id, message_id, text).await
@@ -34,7 +35,15 @@ pub async fn send_photo(
             return send_gif_upload(bot, chat_id, message_id, gif_url, text).await;
         }
         // 如果只有一个图片链接，发送单张图片
-        send_photo_single(bot, chat_id, message_id, photo_urls[0].clone(), text).await
+        send_photo_single(
+            bot,
+            chat_id,
+            message_id,
+            photo_urls[0].clone(),
+            text,
+            spoiler,
+        )
+        .await
     } else {
         // 如果有多张图片，发送媒体组
         // 如果图片多于10张，截断到前10张
@@ -44,7 +53,7 @@ pub async fn send_photo(
             photo_urls
         };
         // 发送媒体组
-        send_media_group(bot, chat_id, message_id, photo_urls, text)
+        send_media_group(bot, chat_id, message_id, photo_urls, text, spoiler)
             .await
             .map(|mut messages| messages.remove(0))
     }
@@ -83,13 +92,20 @@ async fn send_photo_single(
     message_id: MessageId,
     photo_url: String,
     caption: String,
+    spoiler: bool,
 ) -> ResponseResult<Message> {
-    log::debug!("send_photo_single: {}\n\t{}\n\t{}", chat_id, caption, photo_url);
+    log::debug!(
+        "send_photo_single: {}\n\t{}\n\t{}",
+        chat_id,
+        caption,
+        photo_url
+    );
     let photo = InputFile::url(photo_url.parse().unwrap());
     bot.send_photo(chat_id, photo)
         .reply_parameters(ReplyParameters::new(message_id))
         .parse_mode(ParseMode::Html)
         .caption(caption)
+        .has_spoiler(spoiler)
         .await
 }
 
@@ -99,6 +115,7 @@ async fn send_media_group(
     message_id: MessageId,
     media_urls: Vec<String>,
     caption: String,
+    spoiler: bool,
 ) -> ResponseResult<Vec<Message>> {
     log::debug!(
         "send_media_group: {}\n{}\n{}",
@@ -109,7 +126,11 @@ async fn send_media_group(
 
     let mut media_group = media_urls
         .into_iter()
-        .map(|url| InputMedia::Photo(InputMediaPhoto::new(InputFile::url(url.parse().unwrap()))))
+        .map(|url| {
+            let mut photo = InputMediaPhoto::new(InputFile::url(url.parse().unwrap()));
+            photo.has_spoiler = spoiler;
+            InputMedia::Photo(photo)
+        })
         .collect::<Vec<_>>();
 
     if let Some(InputMedia::Photo(media)) = media_group.first_mut() {
@@ -165,8 +186,9 @@ mod tests {
         let message_id = MessageId(123);
         let photo_urls = vec![];
         let text = "没有图片的消息".to_string();
+        let spoiler = false;
 
-        let result = send_photo(&bot, chat_id, message_id, photo_urls, text).await;
+        let result = send_photo(&bot, chat_id, message_id, photo_urls, text, spoiler).await;
 
         assert!(!result.is_err());
     }
@@ -179,8 +201,9 @@ mod tests {
         let message_id = MessageId(123);
         let photo_urls = vec![MockBot::get_photo_url()];
         let text = "单张图片消息".to_string();
+        let spoiler = false;
 
-        let result = send_photo(&bot, chat_id, message_id, photo_urls, text).await;
+        let result = send_photo(&bot, chat_id, message_id, photo_urls, text, spoiler).await;
 
         assert!(!result.is_err());
     }
@@ -193,8 +216,9 @@ mod tests {
         let message_id = MessageId(123);
         let photo_urls = MockBot::get_photos_url();
         let text = "多张图片消息".to_string();
+        let spoiler = false;
 
-        let result = send_photo(&bot, chat_id, message_id, photo_urls, text).await;
+        let result = send_photo(&bot, chat_id, message_id, photo_urls, text, spoiler).await;
 
         // 应该调用 send_media_group，预期失败但不panic
         assert!(!result.is_err());

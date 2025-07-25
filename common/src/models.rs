@@ -3,6 +3,7 @@
 pub struct ProcessorResultMedia {
     pub caption: String,
     pub urls: Vec<String>,
+    pub spoiler: bool,
 }
 
 /// 统一的处理器结果类型

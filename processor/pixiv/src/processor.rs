@@ -36,7 +36,8 @@ async fn get_pixiv_image(id: &str) -> Result<ProcessorResultMedia> {
     let mut urls = Vec::new();
 
     // 检查 x_restrict 值
-    if body.x_restrict == 0 {
+    let is_restrict = body.x_restrict == 1;
+    if !is_restrict {
         // 普通内容，直接使用 Ajax API 获取的 URL
         log::debug!("Normal content detected for ID: {}", id);
 
@@ -67,7 +68,7 @@ async fn get_pixiv_image(id: &str) -> Result<ProcessorResultMedia> {
                 }
             }
         }
-    } else if body.x_restrict == 1 {
+    } else if is_restrict {
         // R18 内容
         log::debug!("R18 content detected for ID: {}", id);
 
@@ -101,5 +102,6 @@ async fn get_pixiv_image(id: &str) -> Result<ProcessorResultMedia> {
     Ok(ProcessorResultMedia {
         caption: text,
         urls,
+        spoiler: is_restrict, // 如果是限制内容，设置 spoiler 为 true
     })
 }

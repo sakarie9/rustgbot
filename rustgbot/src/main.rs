@@ -56,7 +56,7 @@ async fn main() {
                             bot::send_reply_text(&bot, msg.chat.id, msg.id, text).await
                         }
                         BotResponse::Photo(media) => {
-                            bot::send_photo(&bot, msg.chat.id, msg.id, media.urls, media.caption)
+                            bot::send_photo(&bot, msg.chat.id, msg.id, media.urls, media.caption, media.spoiler)
                                 .await
                         }
                         BotResponse::Error(err) => {
