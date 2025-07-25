@@ -1,10 +1,8 @@
 [workspace]
 members = [
     "rustgbot",
-    "processor/bili",
-    "processor/nga",
-    "processor/pixiv",
     "common",
+    "processor/*",
 ]
 resolver = "2"
 
