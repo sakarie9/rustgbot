@@ -6,42 +6,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-// ==== 文本 ====
-
-pub const NGA_SUMMARY_MAX_LENGTH: usize = 800;
-pub const NGA_SUMMARY_MAX_MAX_LENGTH: usize = 1000;
-
-pub fn substring_desc(desc: &str) -> String {
-    let chars: Vec<char> = desc.chars().collect();
-
-    // 如果字符数没有超过最大长度，直接返回
-    if chars.len() <= NGA_SUMMARY_MAX_LENGTH {
-        return desc.trim().to_string();
-    }
-
-    // 在最大长度位置之后查找换行符
-    let mut cr_pos = None;
-
-    // 从 NGA_SUMMARY_MAX_LENGTH 位置开始查找换行符
-    for i in NGA_SUMMARY_MAX_LENGTH..chars.len() {
-        if chars[i] == '\n' {
-            cr_pos = Some(i);
-            break;
-        }
-    }
-
-    match cr_pos {
-        Some(pos) if pos < NGA_SUMMARY_MAX_MAX_LENGTH => {
-            // 换行符在最大长度和极限长度之间，裁剪到换行符
-            chars[..pos].iter().collect::<String>().trim().to_string()
-        }
-        _ => {
-            // 没有找到合适的换行符，或换行符超过极限长度，直接截取到最大长度并添加省略号
-            let truncated: String = chars[..NGA_SUMMARY_MAX_LENGTH].iter().collect();
-            format!("{}……", truncated.trim())
-        }
-    }
-}
+pub const NGA_UA: &str = "NGA_skull/6.0.5(iPhone10,3;iOS 12.0.1)";
 
 // ==== 图片 ====
 
@@ -107,12 +72,6 @@ pub fn replace_html_entities(text: &str) -> String {
         .into_owned()
 }
 
-// 移除HTML标签但保留文本内容
-static HTML_TAG_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<[^>]*>").unwrap());
-pub fn remove_html_tags(text: &str) -> String {
-    HTML_TAG_REGEX.replace_all(text, "").to_string()
-}
-
 // 处理多行换行符
 static NEWLINE_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\n{3,}").unwrap());
 pub fn normalize_newlines(text: &str) -> String {
@@ -163,21 +122,21 @@ pub fn preprocess_url(url: &str) -> String {
             .query_pairs()
             .map(|(k, v)| (k.into_owned(), v.into_owned()))
             .collect();
-        
+
         // 检查是否同时存在 pid 和 opt 参数
         let has_pid = query_pairs.iter().any(|(k, _)| k == "pid");
         let has_opt = query_pairs.iter().any(|(k, _)| k == "opt");
-        
+
         if has_pid && has_opt {
             // 重建查询字符串，排除 opt 参数
             let filtered_pairs: Vec<(String, String)> = query_pairs
                 .into_iter()
                 .filter(|(k, _)| k != "opt")
                 .collect();
-            
+
             // 清空原有查询参数
             parsed_url.set_query(None);
-            
+
             // 重新添加过滤后的参数
             if !filtered_pairs.is_empty() {
                 let query_string = filtered_pairs
@@ -187,11 +146,11 @@ pub fn preprocess_url(url: &str) -> String {
                     .join("&");
                 parsed_url.set_query(Some(&query_string));
             }
-            
+
             return parsed_url.to_string();
         }
     }
-    
+
     // 如果解析失败或不需要处理，返回原URL
     url.to_string()
 }

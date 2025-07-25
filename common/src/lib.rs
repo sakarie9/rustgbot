@@ -2,19 +2,33 @@
 //!
 //! 这个模块包含了整个workspace中可能用到的通用工具函数。
 use anyhow::{Result, anyhow};
-
-pub const NGA_UA: &str = "NGA_skull/6.0.5(iPhone10,3;iOS 12.0.1)";
+use url::Url;
+pub mod models;
+pub use models::*;
 
 pub const MAX_FILE_SIZE: usize = 10 * 1024 * 1024; // 10MB
+pub const GENERAL_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36";
+pub const SUMMARY_MAX_LENGTH: usize = 600;
+pub const SUMMARY_MAX_MAX_LENGTH: usize = 800;
 
 /// 获取环境变量的值
 pub fn get_env_var(name: &str) -> Option<String> {
     std::env::var(name).ok()
 }
 
+/// 使用url库安全地拼接URL，避免斜杠重复
+pub fn join_url(base: &str, path: &str) -> Result<String> {
+    let base_url = Url::parse(base)?;
+    let joined = base_url.join(path)?;
+    Ok(joined.to_string())
+}
+
 // 下载 GIF 文件的辅助函数
-pub async fn get_gif_bytes(url: &str) -> Result<Vec<u8>> {
-    let client = reqwest::Client::builder().user_agent(NGA_UA).build()?;
+pub async fn get_gif_bytes(url: &str) -> Result<Vec<u8>>{
+    get_gif_bytes_ua(url, GENERAL_UA).await
+}
+pub async fn get_gif_bytes_ua(url: &str, ua: &str) -> Result<Vec<u8>> {
+    let client = reqwest::Client::builder().user_agent(ua).build()?;
 
     // 先发送 HEAD 请求检查文件大小和类型
     let head_response = client.head(url).send().await?;
@@ -86,6 +100,39 @@ pub async fn get_gif_bytes(url: &str) -> Result<Vec<u8>> {
     Ok(bytes.to_vec())
 }
 
+/// 截断描述文本到指定长度
+pub fn substring_desc(desc: &str) -> String {
+    let chars: Vec<char> = desc.chars().collect();
+
+    // 如果字符数没有超过最大长度，直接返回
+    if chars.len() <= SUMMARY_MAX_LENGTH {
+        return desc.trim().to_string();
+    }
+
+    // 在最大长度位置之后查找换行符
+    let mut cr_pos = None;
+
+    // 从 SUMMARY_MAX_LENGTH 位置开始查找换行符
+    for i in SUMMARY_MAX_LENGTH..chars.len() {
+        if chars[i] == '\n' {
+            cr_pos = Some(i);
+            break;
+        }
+    }
+
+    match cr_pos {
+        Some(pos) if pos < SUMMARY_MAX_MAX_LENGTH => {
+            // 换行符在最大长度和极限长度之间，裁剪到换行符
+            chars[..pos].iter().collect::<String>().trim().to_string()
+        }
+        _ => {
+            // 没有找到合适的换行符，或换行符超过极限长度，直接截取到最大长度并添加省略号
+            let truncated: String = chars[..SUMMARY_MAX_LENGTH].iter().collect();
+            format!("{}……", truncated.trim())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -102,5 +149,37 @@ mod tests {
         // 测试获取一个不存在的环境变量
         let missing_value = get_env_var("MISSING_VAR");
         assert_eq!(missing_value, None);
+    }
+
+    #[test]
+    fn test_url_joining() {
+        let test_cases = vec![
+            (
+                "https://pixiv.cat/",
+                "114514.jpg",
+                "https://pixiv.cat/114514.jpg",
+            ),
+            (
+                "https://pixiv.cat",
+                "114514.jpg",
+                "https://pixiv.cat/114514.jpg",
+            ),
+            (
+                "https://pixiv.cat/",
+                "/114514.jpg",
+                "https://pixiv.cat/114514.jpg",
+            ),
+            (
+                "https://pixiv.cat",
+                "/114514.jpg",
+                "https://pixiv.cat/114514.jpg",
+            ),
+        ];
+
+        for (base, path, expected) in test_cases {
+            let result = join_url(base, path).unwrap();
+            assert_eq!(result, expected);
+            println!("✓ Base: {} + Path: {} = {}", base, path, result);
+        }
     }
 }

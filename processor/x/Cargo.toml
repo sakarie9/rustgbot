@@ -1,5 +1,5 @@
 [package]
-name = "processor-bili"
+name = "processor-x"
 version = "0.1.0"
 edition = "2024"
 
@@ -9,9 +9,5 @@ common = { path = "../../common" }
 
 # External dependencies
 log = { workspace = true }
-reqwest = { workspace = true }
-url = { workspace = true }
-anyhow = { workspace = true }
-tokio = { workspace = true }
-async-trait = { workspace = true }
 regex = { workspace = true }
+async-trait = { workspace = true }

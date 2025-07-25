@@ -1,19 +1,56 @@
+use regex::Regex;
 use scraper::{Html, Selector};
+use std::sync::OnceLock;
 
 use crate::utils::{
-    get_nga_cookie, get_nga_guest_cookie, get_nga_img_links, img_link_process, normalize_newlines,
-    preprocess_url, remove_html_tags, replace_html_entities, substring_desc,
+    NGA_UA, get_nga_cookie, get_nga_img_links, normalize_newlines, preprocess_url,
+    replace_html_entities,
 };
+use common::{LinkProcessor, ProcessorError, ProcessorResult, ProcessorResultType, substring_desc};
 
 mod tests;
 mod utils;
 
+static NGA_REGEX: OnceLock<Regex> = OnceLock::new();
+
+/// NGA链接处理器
+pub struct NGALinkProcessor;
+
+impl NGALinkProcessor {
+    const PATTERN: &'static str = r"(?:https?://(?:bbs\.nga\.cn|ngabbs\.com|nga\.178\.com|bbs\.gnacn\.cc)[-a-zA-Z0-9@:%_\+.~#?&//=]*)";
+}
+
+#[async_trait::async_trait]
+impl LinkProcessor for NGALinkProcessor {
+    fn pattern(&self) -> &'static str {
+        Self::PATTERN
+    }
+
+    fn regex(&self) -> &Regex {
+        NGA_REGEX.get_or_init(|| Regex::new(Self::PATTERN).expect("Invalid NGA regex pattern"))
+    }
+
+    async fn process_captures(&self, captures: &regex::Captures<'_>) -> ProcessorResultType {
+        let full_match = captures.get(0).unwrap().as_str();
+        match NGAFetcher::parse(full_match).await {
+            Ok(parsed) => Ok(ProcessorResult::Media(parsed)),
+            Err(e) => Err(ProcessorError::with_source(
+                "处理NGA链接失败",
+                e.to_string(),
+            )),
+        }
+    }
+
+    fn name(&self) -> &'static str {
+        "NGA"
+    }
+}
+
 /// NGA 模块的错误类型
 #[derive(Debug)]
-pub enum NGAError {
+enum NGAError {
     NetworkError(reqwest::Error),
     ParseError(String),
-    ConfigError(String),
     HttpError { status: u16, message: String },
 }
 
@@ -22,7 +59,6 @@ impl std::fmt::Display for NGAError {
         match self {
             NGAError::NetworkError(e) => write!(f, "网络请求失败: {}", e),
             NGAError::ParseError(msg) => write!(f, "解析页面失败: {}", msg),
-            NGAError::ConfigError(msg) => write!(f, "配置错误: {}", msg),
             NGAError::HttpError { status, message } => {
                 write!(f, "HTTP 错误 {}: {}", status, message)
             }
@@ -44,46 +80,32 @@ impl From<anyhow::Error> for NGAError {
     }
 }
 
-impl NGAError {
-    /// 获取HTTP状态码（如果是HTTP错误的话）
-    pub fn status_code(&self) -> Option<u16> {
-        match self {
-            NGAError::HttpError { status, .. } => Some(*status),
-            _ => None,
-        }
-    }
-}
-
 /// NGA 模块的结果类型
-pub type NGAResult<T> = std::result::Result<T, NGAError>;
+type NGAResult<T> = std::result::Result<T, NGAError>;
 
 /// NGA 页面数据结构
 #[derive(Debug, Clone)]
-pub struct NGAPage {
-    pub url: String,
-    pub title: String,
-    pub content: String, // 直接存储清理后的内容
-    pub images: Vec<String>,
-}
-
-/// NGA 解析结果
-#[derive(Debug, Clone)]
-pub struct NGAParsed {
-    pub text: String,
-    pub urls: Vec<String>,
+struct NGAPage {
+    url: String,
+    title: String,
+    content: String, // 直接存储清理后的内容
+    images: Vec<String>,
 }
 
 /// NGA 抓取器的主要公共接口
-pub struct NGAFetcher;
+struct NGAFetcher;
 
 impl NGAFetcher {
     /// 解析
-    pub async fn parse(url: &str) -> NGAResult<NGAParsed> {
+    async fn parse(url: &str) -> NGAResult<common::ProcessorResultMedia> {
         let processed_url = preprocess_url(url);
         let page = Self::fetch_page(&processed_url).await?;
         let text = get_summary(&page);
         let urls = page.images;
-        Ok(NGAParsed { text, urls })
+        Ok(common::ProcessorResultMedia {
+            caption: text,
+            urls,
+        })
     }
 
     /// 获取并解析 NGA 页面
@@ -127,7 +149,7 @@ async fn get_nga_html(url: &str) -> NGAResult<String> {
     let client = reqwest::Client::new();
     let response = client
         .get(url)
-        .header("User-Agent", common::NGA_UA)
+        .header("User-Agent", NGA_UA)
         .header("Cookie", get_nga_cookie())
         .send()
         .await?;
@@ -226,61 +248,6 @@ fn clean_body(body: &str) -> String {
 
     // 第四步：规范化换行符
     normalize_newlines(&step3)
-}
-
-/// Cookie 管理器
-pub struct NGACookie;
-
-impl NGACookie {
-    /// 获取 NGA Cookie（如果有配置则使用用户Cookie，否则使用访客Cookie）
-    pub fn get() -> String {
-        get_nga_cookie()
-    }
-
-    /// 获取访客 Cookie
-    pub fn get_guest() -> String {
-        get_nga_guest_cookie()
-    }
-}
-
-/// 图片链接处理器
-pub struct NGAImageProcessor;
-
-impl NGAImageProcessor {
-    /// 从内容中提取所有图片链接
-    pub fn extract_links(content: &str) -> Vec<String> {
-        get_nga_img_links(content)
-    }
-
-    /// 处理单个图片链接（将相对路径转换为绝对路径）
-    pub fn process_link(link: &str) -> String {
-        img_link_process(link)
-    }
-}
-
-/// BBCode 文本处理器
-pub struct NGATextProcessor;
-
-impl NGATextProcessor {
-    /// 清理 BBCode 标签并转换为简化格式
-    pub fn clean(content: &str) -> String {
-        clean_body(content)
-    }
-
-    /// 替换 HTML 实体
-    pub fn replace_html_entities(content: &str) -> String {
-        replace_html_entities(content)
-    }
-
-    /// 移除 HTML 标签
-    pub fn remove_html_tags(content: &str) -> String {
-        remove_html_tags(content)
-    }
-
-    /// 标准化换行符
-    pub fn normalize_newlines(content: &str) -> String {
-        normalize_newlines(content)
-    }
 }
 
 // BBCode 解析器模块
@@ -390,20 +357,20 @@ impl BBCodeTag {
 }
 
 // BBCode 解析器
-pub struct BBCodeParser {
+struct BBCodeParser {
     input: Vec<char>,
     position: usize,
 }
 
 impl BBCodeParser {
-    pub fn new(input: &str) -> Self {
+    fn new(input: &str) -> Self {
         Self {
             input: input.chars().collect(),
             position: 0,
         }
     }
 
-    pub fn parse(&mut self) -> String {
+    fn parse(&mut self) -> String {
         let mut result = String::new();
 
         while self.position < self.input.len() {

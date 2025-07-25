@@ -1,9 +1,11 @@
 #[cfg(test)]
 mod nga_tests {
     use crate::{BBCodeParser, utils::*, *};
+    use common::{SUMMARY_MAX_LENGTH, SUMMARY_MAX_MAX_LENGTH};
     use dotenv::dotenv;
 
     #[tokio::test]
+    #[ignore = "需要网络，仅手动测试"]
     async fn test_get_nga_page() {
         dotenv().ok();
         let url = "https://ngabbs.com/read.php?tid=44662667";
@@ -93,6 +95,7 @@ mod nga_tests {
     }
 
     #[tokio::test]
+    #[ignore = "需要网络，仅手动测试"]
     async fn test_get_nga_html() {
         dotenv().ok();
         // let url = "https://ngabbs.com/read.php?tid=21929866";
@@ -458,48 +461,48 @@ mod nga_tests {
         assert_eq!(substring_desc(short_text), short_text);
 
         // 测试长文本，没有换行符的情况
-        let long_text_no_newline = "a".repeat(NGA_SUMMARY_MAX_LENGTH + 100);
+        let long_text_no_newline = "a".repeat(SUMMARY_MAX_LENGTH + 100);
         let result = substring_desc(&long_text_no_newline);
-        assert_eq!(result.len(), NGA_SUMMARY_MAX_LENGTH + 6); // 400 个字符 + "……" (6个字符)
+        assert_eq!(result.len(), SUMMARY_MAX_LENGTH + 6); // 400 个字符 + "……" (6个字符)
         assert!(result.ends_with("……"));
 
         // 测试长文本，有合适位置的换行符
         let long_text_with_newline = format!(
             "{}{}{}",
-            "a".repeat(NGA_SUMMARY_MAX_LENGTH + 100),
+            "a".repeat(SUMMARY_MAX_LENGTH + 100),
             "\n这里是换行后的内容",
             "b".repeat(200)
         );
         let result = substring_desc(&long_text_with_newline);
-        assert_eq!(result, "a".repeat(NGA_SUMMARY_MAX_LENGTH + 100));
+        assert_eq!(result, "a".repeat(SUMMARY_MAX_LENGTH + 100));
 
         // 测试长文本，换行符在极限长度之后
         let long_text_late_newline = format!(
             "{}{}{}",
-            "a".repeat(NGA_SUMMARY_MAX_MAX_LENGTH + 100),
+            "a".repeat(SUMMARY_MAX_MAX_LENGTH + 100),
             "\n这里是很晚的换行",
             "b".repeat(100)
         );
         let result = substring_desc(&long_text_late_newline);
-        assert_eq!(result.len(), NGA_SUMMARY_MAX_LENGTH + 6); // 400 个字符 + "……"
+        assert_eq!(result.len(), SUMMARY_MAX_LENGTH + 6); // 400 个字符 + "……"
         assert!(result.ends_with("……"));
 
         // 测试包含前后空白字符的文本
-        let text_with_spaces = format!("  {}  ", "内容".repeat(NGA_SUMMARY_MAX_LENGTH - 100));
+        let text_with_spaces = format!("  {}  ", "内容".repeat(SUMMARY_MAX_LENGTH - 100));
         let result = substring_desc(&text_with_spaces);
         assert!(result.ends_with("……"));
         assert!(!result.starts_with(" "));
         assert!(!result.trim_end_matches("……").ends_with(" "));
 
         // 测试正好400字符的文本
-        let exact_length_text = "a".repeat(NGA_SUMMARY_MAX_LENGTH);
+        let exact_length_text = "a".repeat(SUMMARY_MAX_LENGTH);
         let result = substring_desc(&exact_length_text);
         assert_eq!(result, exact_length_text);
 
         // 测试401字符的文本
-        let over_length_text = "a".repeat(NGA_SUMMARY_MAX_LENGTH + 1);
+        let over_length_text = "a".repeat(SUMMARY_MAX_LENGTH + 1);
         let result = substring_desc(&over_length_text);
-        assert_eq!(result.len(), NGA_SUMMARY_MAX_LENGTH + 6); // 400 + "……"
+        assert_eq!(result.len(), SUMMARY_MAX_LENGTH + 6); // 400 + "……"
         assert!(result.ends_with("……"));
     }
 

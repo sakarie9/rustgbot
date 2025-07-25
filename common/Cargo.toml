@@ -8,3 +8,6 @@ edition = "2024"
 reqwest = { workspace = true }
 anyhow = { workspace = true }
 log = { workspace = true }
+url = { workspace = true }
+async-trait = { workspace = true }
+regex = { workspace = true }
