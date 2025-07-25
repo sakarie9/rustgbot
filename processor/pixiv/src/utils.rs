@@ -105,11 +105,7 @@ pub fn get_urls_from_count(url: &str, count: u32) -> Vec<String> {
     }
     let mut urls = Vec::new();
     for i in 0..count {
-        let page_url = if count == 1 {
-            url.to_string()
-        } else {
-            url.replace("_p0", &format!("_p{}", i))
-        };
+        let page_url = url.replace("_p0", &format!("_p{}", i));
         urls.push(page_url);
     }
     urls
