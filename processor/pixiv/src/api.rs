@@ -105,18 +105,23 @@ pub async fn get_r18_image_urls(id: &str) -> Result<Vec<String>> {
 
     let mut urls: Vec<String> = Vec::new();
 
-    // 处理多页情况
-    if let Some(meta_pages) = app_response.illust.meta_pages {
+    // 首先尝试处理多页情况
+    if let Some(meta_pages) = &app_response.illust.meta_pages {
         if !meta_pages.is_empty() {
             urls = meta_pages
-                .into_iter()
-                .map(|page| page.image_urls.original)
+                .iter()
+                .map(|page| page.image_urls.original.clone())
                 .collect();
         }
-    } 
-    // 处理单页情况
-    else if let Some(meta_single_page) = app_response.illust.meta_single_page {
-        urls.push(meta_single_page.original_image_url);
+    }
+    
+    // 如果没有从 meta_pages 获取到URL，尝试从 meta_single_page 获取
+    if urls.is_empty() {
+        if let Some(meta_single_page) = &app_response.illust.meta_single_page {
+            if let Some(original_url) = &meta_single_page.original_image_url {
+                urls.push(original_url.clone());
+            }
+        }
     }
 
     Ok(urls)

@@ -91,5 +91,5 @@ pub struct PixivAppImageUrls {
 
 #[derive(Debug, Deserialize)]
 pub struct PixivAppMetaSinglePage {
-    pub original_image_url: String,
+    pub original_image_url: Option<String>,
 }
