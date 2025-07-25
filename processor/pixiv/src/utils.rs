@@ -20,22 +20,22 @@ fn get_reverse_proxy_url() -> Result<String> {
 
 /// 将Pixiv原始URL转换为代理URL
 pub fn convert_to_proxy_url(original_url: &str) -> Result<String> {
-    let reverse_url = Url::parse(get_reverse_proxy_url()?.as_str())?;
-    // 使用常见的Pixiv代理服务
-    // 例如：i.pixiv.re, i.pixiv.cat, i.pximg.net等
-    let result = if original_url.contains("i.pximg.net") {
-        original_url.replace(
-            "i.pximg.net",
-            reverse_url
-                .domain()
-                .ok_or(anyhow!("Invalid reverse proxy URL"))?,
-        )
-    } else {
-        // 如果URL格式不符合预期，返回原URL
-        original_url.to_string()
-    };
+    let original_url = Url::parse(original_url)?;
+    let proxy_url = Url::parse(get_reverse_proxy_url()?.as_str())?;
 
-    Ok(result)
+    let relative_path = original_url
+        .path()
+        .strip_prefix("/")
+        .unwrap_or(original_url.path());
+
+    let mut final_url = proxy_url.join(relative_path)?;
+
+    // 将原始 URL 的查询参数（?后面的部分）附加到新 URL 上
+    if let Some(query) = original_url.query() {
+        final_url.set_query(Some(query));
+    }
+
+    Ok(final_url.to_string())
 }
 
 /// 构建Pixiv作品的标题文本
@@ -95,4 +95,18 @@ pub fn build_pixiv_caption(body: &PixivIllustBody) -> Result<String> {
     }
 
     Ok(text)
+}
+
+// https://i.pixiv.net/img-original/img/2024/11/30/00/00/47/124748386_p0.png
+// https://i.pixiv.net/img-original/img/2024/11/30/00/00/47/124748386_p1.png
+pub fn get_urls_from_count(url: &str, count: u32) -> Vec<String> {
+    if !url.contains("_p0") {
+        return vec![url.to_string()];
+    }
+    let mut urls = Vec::new();
+    for i in 0..count {
+        let page_url = url.replace("_p0", &format!("_p{}", i));
+        urls.push(page_url);
+    }
+    urls
 }

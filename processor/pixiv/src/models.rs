@@ -1,19 +1,5 @@
 use serde::Deserialize;
 
-/// Pixiv OAuth 令牌响应
-#[derive(Debug, Deserialize)]
-pub struct PixivTokenResponse {
-    pub access_token: String,
-    pub expires_in: u64,
-}
-
-/// Pixiv OAuth 错误响应
-#[derive(Debug, Deserialize)]
-pub struct PixivTokenError {
-    pub error: String,
-    pub error_description: Option<String>,
-}
-
 /// Pixiv Ajax API 响应
 #[derive(Debug, Deserialize)]
 pub struct PixivApiResponse {
@@ -53,43 +39,4 @@ pub struct PixivTag {
 #[derive(Debug, Deserialize)]
 pub struct PixivUrls {
     pub original: Option<String>,
-}
-
-/// Pixiv 多页响应
-#[derive(Debug, Deserialize)]
-pub struct PixivPagesResponse {
-    pub error: bool,
-    pub body: Option<Vec<PixivPageInfo>>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct PixivPageInfo {
-    pub urls: PixivUrls,
-}
-
-/// Pixiv App API 响应结构
-#[derive(Debug, Deserialize)]
-pub struct PixivAppApiResponse {
-    pub illust: PixivAppIllust,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct PixivAppIllust {
-    pub meta_pages: Option<Vec<PixivAppMetaPage>>,
-    pub meta_single_page: Option<PixivAppMetaSinglePage>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct PixivAppMetaPage {
-    pub image_urls: PixivAppImageUrls,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct PixivAppImageUrls {
-    pub original: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct PixivAppMetaSinglePage {
-    pub original_image_url: Option<String>,
 }
