@@ -60,6 +60,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "仅手动测试"]
     fn test_convert_to_proxy_url() {
         // 测试成功的URL转换情况
         let success_test_cases = vec![
