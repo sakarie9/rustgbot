@@ -6,4 +6,6 @@ services:
       - TELOXIDE_TOKEN=your_telegram_bot_token_here
       # - NGA_UID=your_nga_uid_here
       # - NGA_CID=your_nga_cid_here
+      # - PIXIV_REFRESH_TOKEN=your_pixiv_refresh_token_here
+      # - PIXIV_IMAGE_PROXY=https://i.pixiv.re/
     restart: unless-stopped
