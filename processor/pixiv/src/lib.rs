@@ -3,7 +3,6 @@ use regex::Regex;
 use std::sync::OnceLock;
 
 mod api;
-mod auth;
 mod constants;
 mod models;
 mod processor;
@@ -35,7 +34,12 @@ impl LinkProcessor for PixivLinkProcessor {
         if let Some(id_match) = captures.get(1) {
             let id = id_match.as_str();
             match get_pixiv(id).await {
-                Ok(parsed) => Ok(ProcessorResult::Media(parsed)),
+                Ok(parsed) => {
+                    if parsed.urls.is_empty() {
+                        return Ok(ProcessorResult::Text(parsed.caption));
+                    }
+                    Ok(ProcessorResult::Media(parsed))
+                }
                 Err(e) => Err(ProcessorError::with_source(
                     "处理Pixiv链接失败",
                     e.to_string(),

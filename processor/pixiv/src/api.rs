@@ -1,9 +1,8 @@
 use anyhow::{Result, anyhow};
 use common::get_env_var;
 
-use crate::auth::get_access_token_with_retry;
 use crate::constants::PIXIV_UA;
-use crate::models::{PixivApiResponse, PixivAppApiResponse, PixivPagesResponse};
+use crate::models::{PixivApiResponse};
 
 /// 获取 Pixiv 作品信息（Ajax API）
 pub async fn get_pixiv_info(id: &str) -> Result<PixivApiResponse> {
@@ -15,11 +14,19 @@ pub async fn get_pixiv_info(id: &str) -> Result<PixivApiResponse> {
 
     // 创建HTTP客户端，设置必要的请求头
     let client = reqwest::Client::new();
-    let response = client
+    let request = client
         .get(&api_url)
         .header("User-Agent", PIXIV_UA)
-        .header("Referer", "https://www.pixiv.net/")
-        .send()
+        .header("Referer", "https://www.pixiv.net/");
+
+    // 如果有PHPSESSID环境变量，添加到请求头
+    let request = if let Some(session_id) = get_env_var("PIXIV_COOKIE") {
+        request.header("Cookie", format!("PHPSESSID={}", session_id))
+    } else {
+        request
+    };
+
+    let response = request.send()
         .await?;
 
     if !response.status().is_success() {
@@ -41,88 +48,4 @@ pub async fn get_pixiv_info(id: &str) -> Result<PixivApiResponse> {
     }
 
     Ok(api_response)
-}
-
-/// 获取多页图片信息（Ajax API）
-pub async fn get_pixiv_pages(id: &str) -> Result<PixivPagesResponse> {
-    let client = reqwest::Client::new();
-    let page_url = format!("https://www.pixiv.net/ajax/illust/{}/pages", id);
-
-    let page_response = client
-        .get(&page_url)
-        .header("User-Agent", PIXIV_UA)
-        .header("Referer", "https://www.pixiv.net/")
-        .send()
-        .await?;
-
-    if !page_response.status().is_success() {
-        return Err(anyhow!(
-            "Failed to fetch Pixiv pages: HTTP {}",
-            page_response.status()
-        ));
-    }
-
-    let page_text = page_response.text().await?;
-    let page_data: PixivPagesResponse = serde_json::from_str(&page_text)
-        .map_err(|e| anyhow!("Failed to parse Pixiv pages response: {}", e))?;
-
-    Ok(page_data)
-}
-
-/// 获取 R18 内容的图片 URL（使用 App API）
-pub async fn get_r18_image_urls(id: &str) -> Result<Vec<String>> {
-    if get_env_var("PIXIV_REFRESH_TOKEN").is_none() {
-        return Err(anyhow!("No refresh token available for R18 content"));
-    }
-
-    let token = get_access_token_with_retry().await?;
-
-    let client = reqwest::Client::new();
-    let app_api_url = format!(
-        "https://app-api.pixiv.net/v1/illust/detail?illust_id={}&filter=for_ios",
-        id
-    );
-
-    let response = client
-        .get(&app_api_url)
-        .header("Authorization", format!("Bearer {}", token))
-        .header("User-Agent", PIXIV_UA)
-        .send()
-        .await?;
-
-    if !response.status().is_success() {
-        return Err(anyhow!(
-            "Failed to fetch R18 image URLs: HTTP {}",
-            response.status()
-        ));
-    }
-
-    let text = response.text().await?;
-    log::trace!("Pixiv App API response: {}", text);
-
-    let app_response: PixivAppApiResponse = serde_json::from_str(&text)
-        .map_err(|e| anyhow!("Failed to parse Pixiv App API response: {}", e))?;
-
-    let mut urls: Vec<String> = Vec::new();
-
-    // 首先尝试处理多页情况
-    if let Some(meta_pages) = &app_response.illust.meta_pages {
-        if !meta_pages.is_empty() {
-            urls = meta_pages
-                .iter()
-                .map(|page| page.image_urls.original.clone())
-                .collect();
-        }
-    }
-    
-    // 如果没有从 meta_pages 获取到URL，尝试从 meta_single_page 获取
-    if urls.is_empty() {
-        if let Some(meta_single_page) = &app_response.illust.meta_single_page {
-            if let Some(original_url) = &meta_single_page.original_image_url {
-                urls.push(original_url.clone());
-            }
-        }
-    }
-
-    Ok(urls)
 }

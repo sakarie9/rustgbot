@@ -68,7 +68,7 @@ Bot 会自动监听群组和私聊中的消息，当检测到支持的链接时�
 | 环境变量 | 说明 | 必需 |
 |---------|------|------|
 | `TELOXIDE_TOKEN` | Telegram Bot Token | ✅ |
-| `NGA_UID` | NGA cookie 用于游客不可见的帖子的访问 | ❌ |
-| `NGA_UID` | NGA cookie 用于游客不可见的帖子的访问 | ❌ |
-| `PIXIV_REFRESH_TOKEN` | 参考 [Retrieving Auth Token](https://gist.github.com/ZipFile/c9ebedb224406f4f11845ab700124362) 获取 | ❌ |
+| `NGA_UID` | NGA Cookie 用于游客不可见的帖子的访问 | ❌ |
+| `NGA_UID` | NGA Cookie 用于游客不可见的帖子的访问 | ❌ |
+| `PIXIV_COOKIE` | 填写 Cookie 中 `PHPSESSID` 的值，格式为 `1234567_aaaaaaaaaaaaaaaaaaaaa`。没有有效的 Cookie 将无法获取受限制的图片 | ❌ |
 | `PIXIV_IMAGE_PROXY` | 用于 Pixiv 图片防盗链的代理，默认为 `https://i.pixiv.re/` | ❌ |
