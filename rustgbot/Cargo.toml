@@ -11,6 +11,8 @@ path = "src/main.rs"
 # Workspace crates
 processor-bili = { path = "../processor/bili" }
 processor-nga = { path = "../processor/nga" }
+processor-pixiv = { path = "../processor/pixiv" }
+processor-x = { path = "../processor/x" }
 common = { path = "../common" }
 
 # External dependencies - using workspace versions

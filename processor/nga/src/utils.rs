@@ -6,10 +6,11 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-// ==== 文本 ====
-
 pub const NGA_SUMMARY_MAX_LENGTH: usize = 800;
 pub const NGA_SUMMARY_MAX_MAX_LENGTH: usize = 1000;
+pub const NGA_UA: &str = "NGA_skull/6.0.5(iPhone10,3;iOS 12.0.1)";
+
+// ==== 文本 ====
 
 pub fn substring_desc(desc: &str) -> String {
     let chars: Vec<char> = desc.chars().collect();
@@ -107,12 +108,6 @@ pub fn replace_html_entities(text: &str) -> String {
         .into_owned()
 }
 
-// 移除HTML标签但保留文本内容
-static HTML_TAG_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<[^>]*>").unwrap());
-pub fn remove_html_tags(text: &str) -> String {
-    HTML_TAG_REGEX.replace_all(text, "").to_string()
-}
-
 // 处理多行换行符
 static NEWLINE_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\n{3,}").unwrap());
 pub fn normalize_newlines(text: &str) -> String {
@@ -163,21 +158,21 @@ pub fn preprocess_url(url: &str) -> String {
             .query_pairs()
             .map(|(k, v)| (k.into_owned(), v.into_owned()))
             .collect();
-        
+
         // 检查是否同时存在 pid 和 opt 参数
         let has_pid = query_pairs.iter().any(|(k, _)| k == "pid");
         let has_opt = query_pairs.iter().any(|(k, _)| k == "opt");
-        
+
         if has_pid && has_opt {
             // 重建查询字符串，排除 opt 参数
             let filtered_pairs: Vec<(String, String)> = query_pairs
                 .into_iter()
                 .filter(|(k, _)| k != "opt")
                 .collect();
-            
+
             // 清空原有查询参数
             parsed_url.set_query(None);
-            
+
             // 重新添加过滤后的参数
             if !filtered_pairs.is_empty() {
                 let query_string = filtered_pairs
@@ -187,11 +182,11 @@ pub fn preprocess_url(url: &str) -> String {
                     .join("&");
                 parsed_url.set_query(Some(&query_string));
             }
-            
+
             return parsed_url.to_string();
         }
     }
-    
+
     // 如果解析失败或不需要处理，返回原URL
     url.to_string()
 }

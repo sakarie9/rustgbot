@@ -1,5 +1,11 @@
 [workspace]
-members = ["rustgbot", "processor/bili", "processor/nga", "common"]
+members = [
+    "rustgbot",
+    "processor/bili",
+    "processor/nga",
+    "processor/pixiv",
+    "common",
+]
 resolver = "2"
 
 [workspace.dependencies]
@@ -8,6 +14,8 @@ tokio = { version = "1.46", default-features = false, features = [
     "macros",
     "rt-multi-thread",
 ] }
+
+async-trait = "0.1"
 
 # HTTP client
 reqwest = { version = "0.12", default-features = false, features = [
@@ -26,6 +34,10 @@ anyhow = "1.0"
 regex = "1.11"
 scraper = "0.23"
 tabled = "0.20"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 
 # Utilities
 url = "2.5"

@@ -3,6 +3,8 @@
 //! 这个模块提供了处理BiliBili (b23.tv) 短链接重定向的功能。
 
 use anyhow::{Result, anyhow};
+use common::{LinkProcessor, ProcessorError, ProcessorResult, ProcessorResultType};
+use regex::Regex;
 use reqwest::Client;
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
@@ -10,13 +12,48 @@ use url::Url;
 
 // 全局缓存，存储 b23 短链接到重定向目标的映射
 static B23_CACHE: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
+static BILI_REGEX: OnceLock<Regex> = OnceLock::new();
+
+/// BiliBili链接处理器
+pub struct BiliBiliProcessor;
+
+impl BiliBiliProcessor {
+    const PATTERN: &'static str = r"(?:https?://)?(?:b23\.tv|bili2233\.cn)/([a-zA-Z0-9]+)";
+}
+
+#[async_trait::async_trait]
+impl LinkProcessor for BiliBiliProcessor {
+    fn pattern(&self) -> &'static str {
+        Self::PATTERN
+    }
+
+    fn regex(&self) -> &Regex {
+        BILI_REGEX
+            .get_or_init(|| Regex::new(Self::PATTERN).expect("Invalid BiliBili regex pattern"))
+    }
+
+    async fn process_captures(&self, captures: &regex::Captures<'_>) -> ProcessorResultType {
+        let full_match = captures.get(0).unwrap().as_str();
+        match get_b23_redirect(full_match).await {
+            Ok(redirect_url) => Ok(ProcessorResult::Text(redirect_url)),
+            Err(e) => Err(ProcessorError::with_source(
+                "处理BiliBili链接失败",
+                e.to_string(),
+            )),
+        }
+    }
+
+    fn name(&self) -> &'static str {
+        "BiliBili"
+    }
+}
 
 fn get_b23_cache() -> &'static Mutex<HashMap<String, String>> {
     B23_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 /// 获取 b23.tv 短链接的重定向目标 URL（带缓存）
-pub async fn get_b23_redirect(short_url: &str) -> Result<String> {
+async fn get_b23_redirect(short_url: &str) -> Result<String> {
     // 首先检查缓存
     {
         let cache = get_b23_cache().lock().unwrap();
@@ -66,7 +103,7 @@ pub async fn get_b23_redirect(short_url: &str) -> Result<String> {
 }
 
 /// 清理 B 站 URL 中的所有查询参数，返回纯净的 URL
-pub fn clean_bilibili_url(url_str: &str) -> Result<String> {
+fn clean_bilibili_url(url_str: &str) -> Result<String> {
     let mut url = Url::parse(url_str)?;
 
     // 清空所有查询参数
@@ -77,14 +114,14 @@ pub fn clean_bilibili_url(url_str: &str) -> Result<String> {
 
 /// 清空 b23 缓存
 #[allow(dead_code)]
-pub fn clear_b23_cache() {
+fn clear_b23_cache() {
     let mut cache = get_b23_cache().lock().unwrap();
     cache.clear();
 }
 
 /// 获取缓存中的条目数量
 #[allow(dead_code)]
-pub fn get_cache_size() -> usize {
+fn get_cache_size() -> usize {
     let cache = get_b23_cache().lock().unwrap();
     cache.len()
 }

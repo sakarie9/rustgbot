@@ -1,5 +1,5 @@
 [package]
-name = "processor-nga"
+name = "processor-pixiv"
 version = "0.1.0"
 edition = "2024"
 
@@ -10,12 +10,11 @@ common = { path = "../../common" }
 # External dependencies
 log = { workspace = true }
 reqwest = { workspace = true }
-url = { workspace = true }
 anyhow = { workspace = true }
-rand = { workspace = true }
-scraper = { workspace = true }
 regex = { workspace = true }
-dotenv = { workspace = true }
 tokio = { workspace = true }
-tabled = { workspace = true }
 async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+env_logger = { workspace = true }
+url = { workspace = true }

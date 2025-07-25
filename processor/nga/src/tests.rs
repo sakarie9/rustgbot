@@ -4,6 +4,7 @@ mod nga_tests {
     use dotenv::dotenv;
 
     #[tokio::test]
+    #[ignore = "需要网络，仅手动测试"]
     async fn test_get_nga_page() {
         dotenv().ok();
         let url = "https://ngabbs.com/read.php?tid=44662667";
@@ -93,6 +94,7 @@ mod nga_tests {
     }
 
     #[tokio::test]
+    #[ignore = "需要网络，仅手动测试"]
     async fn test_get_nga_html() {
         dotenv().ok();
         // let url = "https://ngabbs.com/read.php?tid=21929866";
