@@ -1,27 +1,25 @@
 #[cfg(test)]
 mod tests {
-    use crate::{convert_to_proxy_url, get_pixiv_image};
+    use crate::{
+        get_pixiv,
+        utils::{build_pixiv_caption, convert_to_proxy_url},
+    };
 
     #[tokio::test]
     #[ignore = "需要网络，仅手动测试"]
-    async fn test_get_pixiv_image() {
+    async fn test_get_pixiv() {
         // 使用一个公开的Pixiv作品ID进行测试
         // 注意：这个测试需要网络连接，在CI环境中可能失败
-        let id = "118704432"; // normal
+        let id = "116383713"; // normal
         // let id = "132616032"; // R18
 
-        match get_pixiv_image(id).await {
+        match get_pixiv(id).await {
             Ok(result) => {
                 println!("获取成功:");
                 println!("文本: {}", result.caption);
                 println!("图片URL数量: {}", result.urls.len());
                 for (i, url) in result.urls.iter().enumerate() {
                     println!("图片 {}: {}", i + 1, url);
-                }
-
-                // 验证R18内容使用了pixiv.cat fallback
-                if result.urls.iter().any(|url| url.contains("pixiv.cat")) {
-                    println!("✅ R18内容正确使用了pixiv.cat镜像");
                 }
             }
             Err(e) => {
@@ -36,7 +34,7 @@ mod tests {
         // 测试多张图片的R18内容
         let id = "126189425"; // 多张图片的R18作品
 
-        match get_pixiv_image(id).await {
+        match get_pixiv(id).await {
             Ok(result) => {
                 println!("多张R18图片测试:");
                 println!("图片数量: {}", result.urls.len());
@@ -120,5 +118,83 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_build_pixiv_caption() {
+        use crate::models::{PixivIllustBody, PixivTag, PixivTags, PixivUrls};
+
+        // 测试完整信息的情况
+        let body_with_all_info = PixivIllustBody {
+            id: "123456".to_string(),
+            title: "测试标题".to_string(),
+            user_id: "654321".to_string(),
+            user_name: "测试作者".to_string(),
+            description: "<p>这是一个测试<br>描述</p>".to_string(),
+            page_count: 1,
+            urls: PixivUrls { original: None },
+            tags: Some(PixivTags {
+                tags: vec![
+                    PixivTag {
+                        tag: "标签1".to_string(),
+                    },
+                    PixivTag {
+                        tag: "标签2".to_string(),
+                    },
+                    PixivTag {
+                        tag: "标签3".to_string(),
+                    },
+                ],
+            }),
+            x_restrict: 0,
+        };
+
+        let result = build_pixiv_caption(&body_with_all_info).expect("应该成功构建文本");
+        println!("完整信息测试结果:\n{}", result);
+
+        assert!(result.contains("测试标题"));
+        assert!(result.contains("测试作者"));
+        assert!(result.contains("这是一个测试"));
+        assert!(result.contains("#标签1, #标签2, #标签3"));
+
+        // 测试只有基本信息的情况
+        let body_basic = PixivIllustBody {
+            id: "123456".to_string(),
+            title: "简单标题".to_string(),
+            user_id: "654321".to_string(),
+            user_name: "简单作者".to_string(),
+            description: "".to_string(), // 空描述
+            page_count: 1,
+            urls: PixivUrls { original: None },
+            tags: None, // 无标签
+            x_restrict: 0,
+        };
+
+        let result_basic = build_pixiv_caption(&body_basic).expect("应该成功构建基本文本");
+        println!("\n基本信息测试结果:\n{}", result_basic);
+
+        assert!(result_basic.contains("简单标题"));
+        assert!(result_basic.contains("简单作者"));
+        assert!(!result_basic.contains("描述")); // 不应该包含描述
+        assert!(!result_basic.contains("标签")); // 不应该包含标签
+
+        // 测试空标签列表的情况
+        let body_empty_tags = PixivIllustBody {
+            id: "123456".to_string(),
+            title: "无标签作品".to_string(),
+            user_id: "654321".to_string(),
+            user_name: "作者名".to_string(),
+            description: "有描述但无标签".to_string(),
+            page_count: 1,
+            urls: PixivUrls { original: None },
+            tags: Some(PixivTags { tags: vec![] }), // 空标签列表
+            x_restrict: 0,
+        };
+
+        let result_empty_tags = build_pixiv_caption(&body_empty_tags).expect("应该成功构建文本");
+        println!("\n空标签测试结果:\n{}", result_empty_tags);
+
+        assert!(result_empty_tags.contains("有描述但无标签"));
+        assert!(!result_empty_tags.contains("标签:")); // 不应该包含标签行
     }
 }

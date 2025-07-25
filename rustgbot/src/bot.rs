@@ -11,6 +11,7 @@ pub async fn send_reply_text(
     message_id: MessageId,
     text: String,
 ) -> ResponseResult<Message> {
+    log::debug!("send_reply_text: {}\n\t{}", chat_id, text);
     bot.send_message(chat_id, text)
         .reply_parameters(ReplyParameters::new(message_id))
         .parse_mode(ParseMode::Html)
@@ -56,6 +57,7 @@ async fn send_gif_upload(
     gif_url: String,
     caption: String,
 ) -> ResponseResult<Message> {
+    log::debug!("send_gif_upload: {}\n\t{}\n\t{}", chat_id, caption, gif_url);
     // 使用 map_err 转换错误类型，这样可以直接使用 ? 操作符
     let gif_bytes = common::get_gif_bytes(&gif_url).await.map_err(|e| {
         log::warn!("Failed to download GIF from {}: {}", gif_url, e);
@@ -82,6 +84,7 @@ async fn send_photo_single(
     photo_url: String,
     caption: String,
 ) -> ResponseResult<Message> {
+    log::debug!("send_photo_single: {}\n\t{}\n\t{}", chat_id, caption, photo_url);
     let photo = InputFile::url(photo_url.parse().unwrap());
     bot.send_photo(chat_id, photo)
         .reply_parameters(ReplyParameters::new(message_id))
@@ -97,6 +100,13 @@ async fn send_media_group(
     media_urls: Vec<String>,
     caption: String,
 ) -> ResponseResult<Vec<Message>> {
+    log::debug!(
+        "send_media_group: {}\n{}\n{}",
+        chat_id,
+        caption,
+        media_urls.join(", ")
+    );
+
     let mut media_group = media_urls
         .into_iter()
         .map(|url| InputMedia::Photo(InputMediaPhoto::new(InputFile::url(url.parse().unwrap()))))

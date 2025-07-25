@@ -51,16 +51,26 @@ async fn main() {
         if let Some(text) = msg.text() {
             if let Some(responses) = process_links(text).await {
                 for resp in responses {
-                    match resp {
+                    let send_result = match resp {
                         BotResponse::Text(text) => {
-                            bot::send_reply_text(&bot, msg.chat.id, msg.id, text).await?;
+                            bot::send_reply_text(&bot, msg.chat.id, msg.id, text).await
                         }
-                        BotResponse::Photo(nga) => {
-                            bot::send_photo(&bot, msg.chat.id, msg.id, nga.urls, nga.caption)
-                                .await?;
+                        BotResponse::Photo(media) => {
+                            bot::send_photo(&bot, msg.chat.id, msg.id, media.urls, media.caption)
+                                .await
                         }
                         BotResponse::Error(err) => {
-                            bot::send_reply_text(&bot, msg.chat.id, msg.id, err).await?;
+                            bot::send_reply_text(&bot, msg.chat.id, msg.id, err).await
+                        }
+                    };
+
+                    // 记录发送失败的错误，但不中断处理流程
+                    if let Err(e) = send_result {
+                        log::error!("Failed to send message to chat {}: {}", msg.chat.id, e);
+                        if let Err(fallback_err) =
+                            bot::send_reply_text(&bot, msg.chat.id, msg.id, e.to_string()).await
+                        {
+                            log::error!("Failed to send fallback error message: {}", fallback_err);
                         }
                     }
                 }

@@ -6,43 +6,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-pub const NGA_SUMMARY_MAX_LENGTH: usize = 800;
-pub const NGA_SUMMARY_MAX_MAX_LENGTH: usize = 1000;
 pub const NGA_UA: &str = "NGA_skull/6.0.5(iPhone10,3;iOS 12.0.1)";
-
-// ==== 文本 ====
-
-pub fn substring_desc(desc: &str) -> String {
-    let chars: Vec<char> = desc.chars().collect();
-
-    // 如果字符数没有超过最大长度，直接返回
-    if chars.len() <= NGA_SUMMARY_MAX_LENGTH {
-        return desc.trim().to_string();
-    }
-
-    // 在最大长度位置之后查找换行符
-    let mut cr_pos = None;
-
-    // 从 NGA_SUMMARY_MAX_LENGTH 位置开始查找换行符
-    for i in NGA_SUMMARY_MAX_LENGTH..chars.len() {
-        if chars[i] == '\n' {
-            cr_pos = Some(i);
-            break;
-        }
-    }
-
-    match cr_pos {
-        Some(pos) if pos < NGA_SUMMARY_MAX_MAX_LENGTH => {
-            // 换行符在最大长度和极限长度之间，裁剪到换行符
-            chars[..pos].iter().collect::<String>().trim().to_string()
-        }
-        _ => {
-            // 没有找到合适的换行符，或换行符超过极限长度，直接截取到最大长度并添加省略号
-            let truncated: String = chars[..NGA_SUMMARY_MAX_LENGTH].iter().collect();
-            format!("{}……", truncated.trim())
-        }
-    }
-}
 
 // ==== 图片 ====
 

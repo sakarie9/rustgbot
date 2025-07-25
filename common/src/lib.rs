@@ -7,7 +7,9 @@ pub mod models;
 pub use models::*;
 
 pub const MAX_FILE_SIZE: usize = 10 * 1024 * 1024; // 10MB
-const GENERAL_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36";
+pub const GENERAL_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36";
+pub const SUMMARY_MAX_LENGTH: usize = 600;
+pub const SUMMARY_MAX_MAX_LENGTH: usize = 800;
 
 /// 获取环境变量的值
 pub fn get_env_var(name: &str) -> Option<String> {
@@ -96,6 +98,39 @@ pub async fn get_gif_bytes_ua(url: &str, ua: &str) -> Result<Vec<u8>> {
 
     log::debug!("Successfully downloaded {} bytes", bytes.len());
     Ok(bytes.to_vec())
+}
+
+/// 截断描述文本到指定长度
+pub fn substring_desc(desc: &str) -> String {
+    let chars: Vec<char> = desc.chars().collect();
+
+    // 如果字符数没有超过最大长度，直接返回
+    if chars.len() <= SUMMARY_MAX_LENGTH {
+        return desc.trim().to_string();
+    }
+
+    // 在最大长度位置之后查找换行符
+    let mut cr_pos = None;
+
+    // 从 SUMMARY_MAX_LENGTH 位置开始查找换行符
+    for i in SUMMARY_MAX_LENGTH..chars.len() {
+        if chars[i] == '\n' {
+            cr_pos = Some(i);
+            break;
+        }
+    }
+
+    match cr_pos {
+        Some(pos) if pos < SUMMARY_MAX_MAX_LENGTH => {
+            // 换行符在最大长度和极限长度之间，裁剪到换行符
+            chars[..pos].iter().collect::<String>().trim().to_string()
+        }
+        _ => {
+            // 没有找到合适的换行符，或换行符超过极限长度，直接截取到最大长度并添加省略号
+            let truncated: String = chars[..SUMMARY_MAX_LENGTH].iter().collect();
+            format!("{}……", truncated.trim())
+        }
+    }
 }
 
 #[cfg(test)]

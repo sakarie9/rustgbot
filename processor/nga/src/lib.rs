@@ -3,10 +3,10 @@ use scraper::{Html, Selector};
 use std::sync::OnceLock;
 
 use crate::utils::{
-    get_nga_cookie, get_nga_img_links, normalize_newlines, preprocess_url, replace_html_entities,
-    substring_desc, NGA_UA,
+    NGA_UA, get_nga_cookie, get_nga_img_links, normalize_newlines, preprocess_url,
+    replace_html_entities,
 };
-use common::{LinkProcessor, ProcessorError, ProcessorResult, ProcessorResultType};
+use common::{LinkProcessor, ProcessorError, ProcessorResult, ProcessorResultType, substring_desc};
 
 mod tests;
 mod utils;
