@@ -103,12 +103,21 @@ pub async fn get_r18_image_urls(id: &str) -> Result<Vec<String>> {
     let app_response: PixivAppApiResponse = serde_json::from_str(&text)
         .map_err(|e| anyhow!("Failed to parse Pixiv App API response: {}", e))?;
 
-    let urls: Vec<String> = app_response
-        .illust
-        .meta_pages
-        .into_iter()
-        .map(|page| page.image_urls.original)
-        .collect();
+    let mut urls: Vec<String> = Vec::new();
+
+    // 处理多页情况
+    if let Some(meta_pages) = app_response.illust.meta_pages {
+        if !meta_pages.is_empty() {
+            urls = meta_pages
+                .into_iter()
+                .map(|page| page.image_urls.original)
+                .collect();
+        }
+    } 
+    // 处理单页情况
+    else if let Some(meta_single_page) = app_response.illust.meta_single_page {
+        urls.push(meta_single_page.original_image_url);
+    }
 
     Ok(urls)
 }

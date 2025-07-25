@@ -75,7 +75,8 @@ pub struct PixivAppApiResponse {
 
 #[derive(Debug, Deserialize)]
 pub struct PixivAppIllust {
-    pub meta_pages: Vec<PixivAppMetaPage>,
+    pub meta_pages: Option<Vec<PixivAppMetaPage>>,
+    pub meta_single_page: Option<PixivAppMetaSinglePage>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -86,4 +87,9 @@ pub struct PixivAppMetaPage {
 #[derive(Debug, Deserialize)]
 pub struct PixivAppImageUrls {
     pub original: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PixivAppMetaSinglePage {
+    pub original_image_url: String,
 }
