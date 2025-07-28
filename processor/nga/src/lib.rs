@@ -263,7 +263,7 @@ enum BBCodeTag {
     Quote,
     Url(Option<String>), // URL 可能有参数
     Img,
-    Collapse(String),          // 折叠标签有标题
+    Collapse(Option<String>),  // 折叠标签可能有标题
     Sticker(String),           // 表情标签有类型
     Table,                     // 表格标签
     TableRow,                  // 表格行标签
@@ -281,6 +281,7 @@ impl BBCodeTag {
             "quote" => Some(BBCodeTag::Quote),
             "url" => Some(BBCodeTag::Url(None)),
             "img" => Some(BBCodeTag::Img),
+            "collapse" => Some(BBCodeTag::Collapse(None)),  // 无标题的collapse标签
             "table" => Some(BBCodeTag::Table),
             "tr" => Some(BBCodeTag::TableRow),
             "td" => Some(BBCodeTag::TableCell(None)),
@@ -291,7 +292,7 @@ impl BBCodeTag {
                     Some(BBCodeTag::Url(Some(url)))
                 } else if tag.starts_with("collapse=") {
                     let title = tag.strip_prefix("collapse=").unwrap_or("").to_string();
-                    Some(BBCodeTag::Collapse(title))
+                    Some(BBCodeTag::Collapse(Some(title)))
                 } else if tag.starts_with("td") && tag.len() > 2 {
                     // 处理带宽度参数的表格单元格，如 td40
                     let width = tag.strip_prefix("td").unwrap_or("").to_string();
@@ -322,7 +323,13 @@ impl BBCodeTag {
                 }
             }
             BBCodeTag::Img => "".to_string(), // 图片标签被移除
-            BBCodeTag::Collapse(title) => format!("[{}] ", title),
+            BBCodeTag::Collapse(title) => {
+                if let Some(title_text) = title {
+                    format!("[{}] ", title_text)
+                } else {
+                    "".to_string()
+                }
+            },
             BBCodeTag::Sticker(_) => "".to_string(), // 表情标签被移除
             BBCodeTag::Table => "\n<pre>".to_string(), // 使用 <pre> 标签包裹表格内容
             BBCodeTag::TableRow => "".to_string(),
@@ -340,7 +347,13 @@ impl BBCodeTag {
             BBCodeTag::Quote => "".to_string(),
             BBCodeTag::Url(_) => "</a>".to_string(),
             BBCodeTag::Img => "".to_string(),
-            BBCodeTag::Collapse(title) => format!(" [/{}]", title),
+            BBCodeTag::Collapse(title) => {
+                if let Some(title_text) = title {
+                    format!(" [/{}]", title_text)
+                } else {
+                    "".to_string()
+                }
+            },
             BBCodeTag::Sticker(_) => "".to_string(),
             BBCodeTag::Table => "</pre>".to_string(),
             BBCodeTag::TableRow => "\n".to_string(),

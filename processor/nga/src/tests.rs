@@ -675,4 +675,29 @@ mod nga_tests {
         assert!(result.contains("第一列"));
         assert!(result.contains("第二列"));
     }
+
+    #[test]
+    fn test_collapse_tags() {
+        // 测试带标题的 collapse 标签
+        let input_with_title = "[collapse=详细内容]这是折叠的内容[/collapse]";
+        let mut parser = BBCodeParser::new(input_with_title);
+        let result = parser.parse();
+        
+        println!("带标题的collapse输入: {}", input_with_title);
+        println!("带标题的collapse结果: {}", result);
+        
+        assert!(result.contains("[详细内容]"));
+        assert!(result.contains("这是折叠的内容"));
+        assert!(result.contains("[/详细内容]"));
+
+        // 测试无标题的 collapse 标签
+        let input_without_title = "[collapse]这是折叠的内容[/collapse]";
+        let mut parser2 = BBCodeParser::new(input_without_title);
+        let result2 = parser2.parse();
+        
+        println!("无标题的collapse输入: {}", input_without_title);
+        println!("无标题的collapse结果: {}", result2);
+        
+        assert!(result2.contains("这是折叠的内容"));
+    }
 }
