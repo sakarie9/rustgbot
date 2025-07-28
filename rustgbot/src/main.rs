@@ -48,7 +48,9 @@ async fn main() {
     log::info!("Bot started. Listening for messages...");
 
     teloxide::repl(bot, |bot: Bot, msg: Message| async move {
+        log::trace!("Received message: {:?}", &msg);
         if let Some(text) = msg.text() {
+            // 处理文本消息
             if let Some(responses) = process_links(text).await {
                 for resp in responses {
                     let send_result = match resp {
@@ -56,8 +58,15 @@ async fn main() {
                             bot::send_reply_text(&bot, msg.chat.id, msg.id, text).await
                         }
                         BotResponse::Photo(media) => {
-                            bot::send_photo(&bot, msg.chat.id, msg.id, media.urls, media.caption, media.spoiler)
-                                .await
+                            bot::send_photo(
+                                &bot,
+                                msg.chat.id,
+                                msg.id,
+                                media.urls,
+                                media.caption,
+                                media.spoiler,
+                            )
+                            .await
                         }
                         BotResponse::Error(err) => {
                             bot::send_reply_text(&bot, msg.chat.id, msg.id, err).await
@@ -75,7 +84,24 @@ async fn main() {
                     }
                 }
             }
+        } else if msg.chat.is_private() {
+            // 处理私聊消息
+            // 清理 gif caption
+            if msg.caption().is_none() {
+                return Ok(());
+            }
+            if let Some(animation) = msg.animation() {
+                if animation.mime_type != Some("video/mp4".parse().unwrap()) {
+                    return Ok(());
+                }
+                // 处理动画消息（如GIF）
+                let gif_id = animation.file.id.clone();
+                if let Err(e) = bot::send_gif_from_fileid(&bot, msg.chat.id, gif_id).await {
+                    log::error!("Failed to send GIF: {}", e);
+                }
+            }
         }
+
         Ok(())
     })
     .await;

@@ -1,6 +1,7 @@
 use teloxide::ApiError;
 use teloxide::RequestError;
 use teloxide::prelude::*;
+use teloxide::types::FileId;
 use teloxide::types::{
     InputFile, InputMedia, InputMediaPhoto, Message, MessageId, ParseMode, ReplyParameters,
 };
@@ -83,6 +84,16 @@ async fn send_gif_upload(
         .reply_parameters(ReplyParameters::new(message_id))
         .parse_mode(ParseMode::Html)
         .caption(caption)
+        .await
+}
+
+pub async fn send_gif_from_fileid(
+    bot: &Bot,
+    chat_id: ChatId,
+    file_id: FileId,
+) -> ResponseResult<Message> {
+    log::debug!("send_gif_from_fileid: {}\n\t{}", chat_id, file_id);
+    bot.send_animation(chat_id, InputFile::file_id(file_id))
         .await
 }
 
