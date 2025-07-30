@@ -81,6 +81,9 @@ async fn main() {
         );
 
     Dispatcher::builder(bot, handler)
+        .default_handler(|_| async move {
+            // Handle unmatched updates by doing nothing
+        })
         .enable_ctrlc_handler()
         .build()
         .dispatch()
