@@ -32,6 +32,7 @@ anyhow = "1.0"
 regex = "1.11"
 scraper = "0.23"
 tabled = "0.20"
+human_bytes = { version = "0.4", default-features = false }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

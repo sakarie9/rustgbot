@@ -2,6 +2,7 @@
 //!
 //! 这个模块包含了整个workspace中可能用到的通用工具函数。
 use anyhow::{Result, anyhow};
+use human_bytes::human_bytes;
 use url::Url;
 pub mod models;
 pub use models::*;
@@ -64,17 +65,13 @@ async fn download_file_internal(
     if let Some(content_length) = head_response.headers().get("content-length") {
         if let Ok(size_str) = content_length.to_str() {
             if let Ok(size) = size_str.parse::<usize>() {
-                log::debug!(
-                    "File size: {} bytes ({:.2} MB)",
-                    size,
-                    size as f64 / 1024.0 / 1024.0
-                );
+                log::debug!("File size: {} bytes ({})", size, convert_bytes(size as f64));
 
                 if size > MAX_FILE_SIZE {
                     return Err(anyhow!(
-                        "File too large: {:.2} MB (max: {:.2} MB)",
-                        size as f64 / 1024.0 / 1024.0,
-                        MAX_FILE_SIZE as f64 / 1024.0 / 1024.0
+                        "File too large: {} (max: {})",
+                        convert_bytes(size as f64),
+                        convert_bytes(MAX_FILE_SIZE as f64)
                     ));
                 }
             }
@@ -114,12 +111,14 @@ async fn download_file_internal(
 
     let bytes = response.bytes().await?;
 
+    let bytes_len = bytes.len();
+
     // 再次检查实际下载的文件大小
-    if bytes.len() > MAX_FILE_SIZE {
+    if bytes_len > MAX_FILE_SIZE {
         return Err(anyhow!(
-            "Downloaded file too large: {:.2} MB (max: {:.2} MB)",
-            bytes.len() as f64 / 1024.0 / 1024.0,
-            MAX_FILE_SIZE as f64 / 1024.0 / 1024.0
+            "Downloaded file too large: {} (max: {})",
+            convert_bytes(bytes_len as f64),
+            convert_bytes(MAX_FILE_SIZE as f64)
         ));
     }
 
@@ -158,6 +157,115 @@ pub fn substring_desc(desc: &str) -> String {
             format!("{}……", truncated.trim())
         }
     }
+}
+
+/// 将字节数转换为人类可读的格式
+pub fn convert_bytes<T: Into<f64>>(bytes: T) -> String {
+    human_bytes(bytes.into())
+}
+
+/// 从URL中提取文件名，如果无法提取则根据content-type生成默认文件名
+pub fn extract_filename_from_url(url: &str, content_type: &str) -> String {
+    use std::path::Path;
+
+    // 尝试从URL路径中提取文件名
+    if let Ok(parsed_url) = url::Url::parse(url) {
+        let path = parsed_url.path();
+        if let Some(filename) = Path::new(path).file_name() {
+            if let Some(filename_str) = filename.to_str() {
+                if !filename_str.is_empty() && filename_str != "/" {
+                    return filename_str.to_string();
+                }
+            }
+        }
+    }
+
+    // 如果无法从URL提取文件名，根据content-type生成默认文件名
+    get_file_extension_from_content_type(content_type)
+}
+
+/// 根据URL的文件扩展名推断Content-Type
+pub fn guess_content_type_from_url(url: &str) -> Option<String> {
+    use std::path::Path;
+
+    // 尝试从URL中提取文件扩展名
+    if let Ok(parsed_url) = url::Url::parse(url) {
+        let path = parsed_url.path();
+        if let Some(extension) = Path::new(path).extension() {
+            if let Some(ext_str) = extension.to_str() {
+                return Some(match ext_str.to_lowercase().as_str() {
+                    // 图片格式
+                    "jpg" | "jpeg" => "image/jpeg".to_string(),
+                    "png" => "image/png".to_string(),
+                    "gif" => "image/gif".to_string(),
+                    "webp" => "image/webp".to_string(),
+                    "bmp" => "image/bmp".to_string(),
+                    "svg" => "image/svg+xml".to_string(),
+
+                    // 视频格式
+                    "mp4" => "video/mp4".to_string(),
+                    "webm" => "video/webm".to_string(),
+                    "avi" => "video/x-msvideo".to_string(),
+                    "mov" => "video/quicktime".to_string(),
+                    "mkv" => "video/x-matroska".to_string(),
+
+                    // 音频格式
+                    "mp3" => "audio/mpeg".to_string(),
+                    "wav" => "audio/wav".to_string(),
+                    "ogg" => "audio/ogg".to_string(),
+                    "flac" => "audio/flac".to_string(),
+                    "aac" => "audio/aac".to_string(),
+
+                    // 文档格式
+                    "pdf" => "application/pdf".to_string(),
+                    "zip" => "application/zip".to_string(),
+                    "rar" => "application/x-rar-compressed".to_string(),
+                    "7z" => "application/x-7z-compressed".to_string(),
+                    "txt" => "text/plain".to_string(),
+
+                    // 其他格式保持为 application/octet-stream
+                    _ => "application/octet-stream".to_string(),
+                });
+            }
+        }
+    }
+    None
+}
+
+/// 根据content-type获取对应的文件扩展名
+pub fn get_file_extension_from_content_type(content_type: &str) -> String {
+    let extension = if content_type.starts_with("image/") {
+        match content_type {
+            "image/jpeg" => "jpg",
+            "image/png" => "png",
+            "image/gif" => "gif",
+            "image/webp" => "webp",
+            _ => "jpg", // 默认图片格式
+        }
+    } else if content_type.starts_with("video/") {
+        match content_type {
+            "video/mp4" => "mp4",
+            "video/webm" => "webm",
+            "video/avi" => "avi",
+            _ => "mp4", // 默认视频格式
+        }
+    } else if content_type.starts_with("audio/") {
+        match content_type {
+            "audio/mpeg" => "mp3",
+            "audio/wav" => "wav",
+            "audio/ogg" => "ogg",
+            _ => "mp3", // 默认音频格式
+        }
+    } else {
+        match content_type {
+            "application/pdf" => "pdf",
+            "application/zip" => "zip",
+            "text/plain" => "txt",
+            _ => "bin",
+        }
+    };
+
+    format!("file.{}", extension)
 }
 
 #[cfg(test)]

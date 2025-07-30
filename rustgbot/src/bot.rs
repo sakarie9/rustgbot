@@ -1,4 +1,7 @@
 use anyhow::Result;
+use common::convert_bytes;
+use common::extract_filename_from_url;
+use common::guess_content_type_from_url;
 use teloxide::ApiError;
 use teloxide::RequestError;
 use teloxide::payloads::SendAnimation;
@@ -120,50 +123,74 @@ async fn send_photo(msg: MessageSenderBuilder, bot: &Bot) -> Result<Message> {
     if msg.urls.is_empty() {
         send_message(msg, bot).await
     } else if msg.urls.len() == 1 {
-        // 如果只有一个链接，使用智能下载策略
-        // 如果是 gif，则使用 send_gif，否则使用 send_photo_single
-        if msg.urls[0].ends_with(".gif") {
-            send_gif(msg, bot).await
-        } else {
-            send_photo_single(msg, bot).await
-        }
+        // 如果只有一个链接，使用统一的媒体发送策略
+        send_single_media(msg, bot).await
     } else {
         // 发送媒体组
         Ok(send_photo_group(msg, bot).await?)
     }
 }
 
-/// 发送单张图片，如果失败则尝试下载并上传
-async fn send_photo_single(msg: MessageSenderBuilder, bot: &Bot) -> Result<Message> {
+/// 发送单张媒体文件，根据URL或内容类型智能选择发送方式
+/// 如果直接发送URL失败，则下载文件并上传
+async fn send_single_media(msg: MessageSenderBuilder, bot: &Bot) -> Result<Message> {
     log::debug!(
-        "send_photo_single: {}\n\t{}\n\t{}",
+        "send_single_media: {}\n\t{}\n\t{}",
         msg.chat_id,
         msg.text,
         msg.urls.join(", ")
     );
 
-    // 第一次尝试：直接使用URL
-    let photo = InputFile::url(msg.urls[0].parse().unwrap());
-    let request = bot.send_photo(msg.chat_id, photo).apply_settings(&msg);
+    let url = &msg.urls[0];
 
-    match request.await {
+    // 根据URL扩展名判断媒体类型
+    let is_gif = url.ends_with(".gif");
+
+    // 第一次尝试：直接使用URL
+    let input_file = InputFile::url(url.parse().unwrap());
+    let direct_result = if is_gif {
+        bot.send_animation(msg.chat_id, input_file)
+            .apply_settings(&msg)
+            .await
+    } else {
+        bot.send_photo(msg.chat_id, input_file)
+            .apply_settings(&msg)
+            .await
+    };
+
+    match direct_result {
         Ok(message) => return Ok(message),
         Err(e) => {
-            log::warn!("直接发送URL失败: {}, 尝试下载并上传", e);
+            log::warn!("Direct send failed: {}, trying to download and upload", e);
         }
     }
 
     // 第二次尝试：下载文件并上传
-    let data = common::download_file(&msg.urls[0]).await;
+    let data = common::download_file(url).await;
     if let Err(e) = data {
-        return Err(anyhow::anyhow!("Failed to download and send photo: {}", e));
+        return Err(anyhow::anyhow!("Failed to download and send media: {}", e));
     }
 
-    let (file_bytes, _content_type) = data.unwrap();
-    let photo = InputFile::memory(file_bytes).file_name("image.png");
-    let request = bot.send_photo(msg.chat_id, photo).apply_settings(&msg);
+    let (file_bytes, content_type) = data.unwrap();
 
-    Ok(request.await?)
+    // 如果是 application/octet-stream，尝试从URL推断实际的内容类型
+    let actual_content_type = match content_type.as_str() {
+        "application/octet-stream" => guess_content_type_from_url(url).unwrap_or(content_type),
+        _ => content_type,
+    };
+
+    // 使用统一的发送函数
+    send_file_upload(
+        bot,
+        msg.chat_id,
+        msg.message_id.unwrap_or(MessageId(0)),
+        file_bytes,
+        &actual_content_type,
+        url,
+        &msg.text,
+    )
+    .await
+    .map_err(|e| anyhow::anyhow!("Failed to send media: {}", e))
 }
 
 /// 发送多张图片，如果失败则尝试下载并上传
@@ -188,11 +215,17 @@ async fn send_photo_group(msg: MessageSenderBuilder, bot: &Bot) -> Result<Messag
 
     match direct_result {
         Ok(mut messages) => {
-            log::info!("成功直接发送媒体组，共 {} 个文件", messages.len());
+            log::info!(
+                "Successfully sent media group, total {} files",
+                messages.len()
+            );
             Ok(messages.remove(0))
         }
         Err(e) => {
-            log::warn!("直接发送媒体组失败: {}，尝试逐个下载上传", e);
+            log::warn!(
+                "Failed to send media group directly: {}, trying to download and upload",
+                e
+            );
 
             // 逐个下载并发送文件
             Ok(send_media_group_with_download(
@@ -209,39 +242,6 @@ async fn send_photo_group(msg: MessageSenderBuilder, bot: &Bot) -> Result<Messag
     }
 }
 
-/// 发送单张GIF，如果失败则尝试下载并上传
-pub async fn send_gif(msg: MessageSenderBuilder, bot: &Bot) -> Result<Message> {
-    log::debug!(
-        "send_gif: {}\n\t{}\n\t{}",
-        msg.chat_id,
-        msg.text,
-        msg.urls.join(", ")
-    );
-
-    // 第一次尝试：直接使用URL
-    let photo = InputFile::url(msg.urls[0].parse().unwrap());
-    let request = bot.send_animation(msg.chat_id, photo).apply_settings(&msg);
-
-    match request.await {
-        Ok(message) => return Ok(message),
-        Err(e) => {
-            log::warn!("直接发送URL失败: {}, 尝试下载并上传", e);
-        }
-    }
-
-    // 第二次尝试：下载文件并上传
-    let data = common::download_file(&msg.urls[0]).await;
-    if let Err(e) = data {
-        return Err(anyhow::anyhow!("Failed to download and send photo: {}", e));
-    }
-
-    let (file_bytes, _content_type) = data.unwrap();
-    let photo = InputFile::memory(file_bytes).file_name("image.gif");
-    let request = bot.send_animation(msg.chat_id, photo).apply_settings(&msg);
-
-    Ok(request.await?)
-}
-
 /// 用file_id发送GIF
 pub async fn send_gif_from_fileid(
     bot: &Bot,
@@ -254,7 +254,7 @@ pub async fn send_gif_from_fileid(
 }
 
 /// 根据文件类型和内容上传文件到Telegram
-pub async fn send_file_upload(
+async fn send_media_by_content_type(
     bot: &Bot,
     chat_id: ChatId,
     message_id: MessageId,
@@ -264,7 +264,7 @@ pub async fn send_file_upload(
     caption: &str,
 ) -> ResponseResult<Message> {
     log::debug!(
-        "send_file_upload: {}\n\tContent-Type: {}\n\tURL: {}",
+        "send_media_by_content_type: {}\n\tContent-Type: {}\n\tURL: {}",
         chat_id,
         content_type,
         original_url
@@ -272,7 +272,7 @@ pub async fn send_file_upload(
 
     // 根据URL提取文件名，如果无法提取则使用默认名称
     let file_name = extract_filename_from_url(original_url, content_type);
-    let input_file = InputFile::memory(file_bytes).file_name(file_name);
+    let input_file = InputFile::memory(file_bytes).file_name(file_name.clone());
     let reply_params = ReplyParameters::new(message_id);
 
     match content_type {
@@ -318,6 +318,37 @@ pub async fn send_file_upload(
     }
 }
 
+/// 根据文件类型和内容上传文件到Telegram（公共接口）
+pub async fn send_file_upload(
+    bot: &Bot,
+    chat_id: ChatId,
+    message_id: MessageId,
+    file_bytes: Vec<u8>,
+    content_type: &str,
+    original_url: &str,
+    caption: &str,
+) -> ResponseResult<Message> {
+    let size = file_bytes.len();
+    let file_name = extract_filename_from_url(original_url, content_type);
+
+    log::info!(
+        "Downloading and sending file {} with size: {}",
+        file_name,
+        convert_bytes(size as f64)
+    );
+
+    send_media_by_content_type(
+        bot,
+        chat_id,
+        message_id,
+        file_bytes,
+        content_type,
+        original_url,
+        caption,
+    )
+    .await
+}
+
 /// 直接发送URL媒体组
 async fn send_media_group_direct(
     bot: &Bot,
@@ -359,12 +390,17 @@ async fn send_media_group_with_download(
 
     // 先下载所有文件
     for (index, url) in media_urls.iter().enumerate() {
-        log::info!("下载第 {}/{} 个文件: {}", index + 1, media_urls.len(), url);
+        log::debug!(
+            "Downloading {}/{} file: {}",
+            index + 1,
+            media_urls.len(),
+            url
+        );
 
         match common::download_file(url).await {
             Ok((file_bytes, content_type)) => {
-                log::info!(
-                    "成功下载第 {} 个文件: {} bytes, content-type: {}",
+                log::debug!(
+                    "Successfully downloaded file {}: {} bytes, content-type: {}",
                     index + 1,
                     file_bytes.len(),
                     content_type
@@ -377,7 +413,9 @@ async fn send_media_group_with_download(
             Err(_e) => {
                 // 存在失败直接结束
                 // let _ = send_reply_text(bot, chat_id, message_id, "下载失败".to_string()).await;
-                return Err(RequestError::Api(ApiError::Unknown("下载失败".to_string())));
+                return Err(RequestError::Api(ApiError::Unknown(
+                    "Download media group failed".to_string(),
+                )));
             }
         }
     }
@@ -406,66 +444,10 @@ async fn send_media_group_with_download(
     }
 
     // 发送媒体组
-    log::info!("发送包含 {} 个文件的媒体组", media_count);
+    log::info!("Sending media group with {} files", media_count);
     bot.send_media_group(chat_id, media_group)
         .reply_parameters(ReplyParameters::new(message_id))
         .await
-}
-
-/// 从URL中提取文件名，如果无法提取则根据content-type生成默认文件名
-fn extract_filename_from_url(url: &str, content_type: &str) -> String {
-    use std::path::Path;
-
-    // 尝试从URL路径中提取文件名
-    if let Ok(parsed_url) = url::Url::parse(url) {
-        let path = parsed_url.path();
-        if let Some(filename) = Path::new(path).file_name() {
-            if let Some(filename_str) = filename.to_str() {
-                if !filename_str.is_empty() && filename_str != "/" {
-                    return filename_str.to_string();
-                }
-            }
-        }
-    }
-
-    // 如果无法从URL提取文件名，根据content-type生成默认文件名
-    get_file_extension_from_content_type(content_type)
-}
-
-/// 根据content-type获取对应的文件扩展名
-fn get_file_extension_from_content_type(content_type: &str) -> String {
-    let extension = if content_type.starts_with("image/") {
-        match content_type {
-            "image/jpeg" => "jpg",
-            "image/png" => "png",
-            "image/gif" => "gif",
-            "image/webp" => "webp",
-            _ => "jpg", // 默认图片格式
-        }
-    } else if content_type.starts_with("video/") {
-        match content_type {
-            "video/mp4" => "mp4",
-            "video/webm" => "webm",
-            "video/avi" => "avi",
-            _ => "mp4", // 默认视频格式
-        }
-    } else if content_type.starts_with("audio/") {
-        match content_type {
-            "audio/mpeg" => "mp3",
-            "audio/wav" => "wav",
-            "audio/ogg" => "ogg",
-            _ => "mp3", // 默认音频格式
-        }
-    } else {
-        match content_type {
-            "application/pdf" => "pdf",
-            "application/zip" => "zip",
-            "text/plain" => "txt",
-            _ => "bin",
-        }
-    };
-
-    format!("file.{}", extension)
 }
 
 // 简单的发送文本回复
