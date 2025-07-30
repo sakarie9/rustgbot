@@ -2,15 +2,20 @@ use common::{LinkProcessor, ProcessorResult, ProcessorResultMedia};
 use dotenv::dotenv;
 use regex::RegexSet;
 use std::sync::OnceLock;
-use teloxide::Bot;
-use teloxide::types::Message;
+use teloxide::dispatching::dialogue::GetChatId;
+use teloxide::prelude::*;
+use teloxide::types::{Message, Update};
+use teloxide::{Bot, dptree};
 
 use processor_bili::BiliBiliProcessor;
 use processor_nga::NGALinkProcessor;
 use processor_pixiv::PixivLinkProcessor;
 use processor_x::XLinkProcessor;
 
+use crate::bot::MessageSenderBuilder;
+
 mod bot;
+mod commands;
 mod tests;
 
 static PROCESSORS: OnceLock<Vec<Box<dyn LinkProcessor>>> = OnceLock::new();
@@ -47,64 +52,122 @@ async fn main() {
 
     log::info!("Bot started. Listening for messages...");
 
-    teloxide::repl(bot, |bot: Bot, msg: Message| async move {
-        log::trace!("Received message: {:?}", &msg);
-        if let Some(text) = msg.text() {
-            // 处理文本消息
-            if let Some(responses) = process_links(text).await {
-                for resp in responses {
-                    let send_result = match resp {
-                        BotResponse::Text(text) => {
-                            bot::send_reply_text(&bot, msg.chat.id, msg.id, text).await
-                        }
-                        BotResponse::Photo(media) => {
-                            bot::send_photo(
-                                &bot,
-                                msg.chat.id,
-                                msg.id,
-                                media.urls,
-                                media.caption,
-                                media.spoiler,
-                            )
-                            .await
-                        }
-                        BotResponse::Error(err) => {
-                            bot::send_reply_text(&bot, msg.chat.id, msg.id, err).await
-                        }
-                    };
+    let handler = Update::filter_message()
+        .branch(
+            // 命令
+            dptree::entry()
+                .filter_command::<commands::BotCommand>()
+                .endpoint(commands::bot_command_handler),
+        )
+        .branch(
+            // 文本
+            dptree::filter(|msg: Message| msg.text().is_some()).endpoint(
+                |bot: Bot, msg: Message| async move {
+                    log::trace!("Received message: {:?}", &msg);
+                    process_text_message(&bot, msg).await;
+                    Ok(())
+                },
+            ),
+        )
+        .branch(
+            // 处理私聊GIF消息
+            dptree::filter(|msg: Message| msg.chat.is_private()).endpoint(
+                |bot: Bot, msg: Message| async move {
+                    log::trace!("Received private message: {:?}", &msg);
+                    process_private_message(&bot, msg).await;
+                    Ok(())
+                },
+            ),
+        );
 
-                    // 记录发送失败的错误，但不中断处理流程
-                    if let Err(e) = send_result {
-                        log::error!("Failed to send message to chat {}: {}", msg.chat.id, e);
-                        if let Err(fallback_err) =
-                            bot::send_reply_text(&bot, msg.chat.id, msg.id, e.to_string()).await
-                        {
-                            log::error!("Failed to send fallback error message: {}", fallback_err);
-                        }
-                    }
+    Dispatcher::builder(bot, handler)
+        .enable_ctrlc_handler()
+        .build()
+        .dispatch()
+        .await;
+}
+
+async fn process_text_message(bot: &Bot, msg: Message) {
+    let text = msg.text().unwrap();
+    let chat_id = msg.chat_id().unwrap();
+
+    if should_skip_message(&msg) {
+        log::debug!("Skipping message due to link preview options: {:?}", &msg);
+        return;
+    }
+
+    if let Some(responses) = process_links(text).await {
+        for resp in responses {
+            let send_result = match resp {
+                BotResponse::Text(text) => {
+                    MessageSenderBuilder::new(chat_id, text)
+                        .message_id(msg.id)
+                        .send_message(bot)
+                        .await
                 }
-            }
-        } else if msg.chat.is_private() {
-            // 处理私聊消息
-            // 清理 gif caption
-            if msg.caption().is_none() {
-                return Ok(());
-            }
-            if let Some(animation) = msg.animation() {
-                if animation.mime_type != Some("video/mp4".parse().unwrap()) {
-                    return Ok(());
+                BotResponse::Photo(media) => {
+                    MessageSenderBuilder::new(chat_id, media.caption)
+                        .message_id(msg.id)
+                        .urls(media.urls)
+                        .spoiler(media.spoiler)
+                        .send_photo(bot)
+                        .await
                 }
-                // 处理动画消息（如GIF）
-                let gif_id = animation.file.id.clone();
-                if let Err(e) = bot::send_gif_from_fileid(&bot, msg.chat.id, gif_id).await {
-                    log::error!("Failed to send GIF: {}", e);
+                BotResponse::Error(err) => {
+                    MessageSenderBuilder::new(chat_id, err)
+                        .message_id(msg.id)
+                        .send_message(bot)
+                        .await
+                }
+            };
+
+            // 记录发送失败的错误，但不中断处理流程
+            if let Err(e) = send_result {
+                log::error!("Failed to send message to chat {}: {}", chat_id, e);
+                if let Err(fallback_err) = MessageSenderBuilder::new(chat_id, e.to_string())
+                    .message_id(msg.id)
+                    .send_message(bot)
+                    .await
+                {
+                    log::error!("Failed to send fallback error message: {}", fallback_err);
                 }
             }
         }
+    }
+}
 
-        Ok(())
-    })
-    .await;
+/// 检查link_preview_options是否存在已经被转换的链接
+fn should_skip_message(msg: &Message) -> bool {
+    if msg.link_preview_options().is_none() {
+        return false;
+    }
+    if let Some(preview) = msg.link_preview_options() {
+        // 链接存在 fixupx.com 或 fxtwitter.com 跳过
+        if preview.url.as_deref().map_or(false, |url| {
+            url.contains("fixupx.com") || url.contains("fxtwitter.com")
+        }) {
+            return true;
+        }
+    }
+    false
+}
+
+async fn process_private_message(bot: &Bot, msg: Message) {
+    // 处理私聊消息
+    // 清理 gif caption
+    if msg.caption().is_none() {
+        return;
+    }
+    if let Some(animation) = msg.animation() {
+        if animation.mime_type != Some("video/mp4".parse().unwrap()) {
+            return;
+        }
+        // 处理动画消息（如GIF）
+        let gif_id = animation.file.id.clone();
+        if let Err(e) = bot::send_gif_from_fileid(&bot, msg.chat.id, gif_id).await {
+            log::error!("Failed to send GIF: {}", e);
+        }
+    }
 }
 
 // 处理链接

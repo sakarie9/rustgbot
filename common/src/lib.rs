@@ -23,11 +23,31 @@ pub fn join_url(base: &str, path: &str) -> Result<String> {
     Ok(joined.to_string())
 }
 
+// 下载任意文件的通用函数
+pub async fn download_file(url: &str) -> Result<(Vec<u8>, String)> {
+    download_file_ua(url, GENERAL_UA).await
+}
+
+pub async fn download_file_ua(url: &str, ua: &str) -> Result<(Vec<u8>, String)> {
+    download_file_internal(url, ua, None).await
+}
+
 // 下载 GIF 文件的辅助函数
-pub async fn get_gif_bytes(url: &str) -> Result<Vec<u8>>{
+pub async fn get_gif_bytes(url: &str) -> Result<Vec<u8>> {
     get_gif_bytes_ua(url, GENERAL_UA).await
 }
+
 pub async fn get_gif_bytes_ua(url: &str, ua: &str) -> Result<Vec<u8>> {
+    let (bytes, _) = download_file_internal(url, ua, Some("gif".to_string())).await?;
+    Ok(bytes)
+}
+
+// 内部下载函数，统一处理所有下载逻辑
+async fn download_file_internal(
+    url: &str,
+    ua: &str,
+    check_image_type: Option<String>,
+) -> Result<(Vec<u8>, String)> {
     let client = reqwest::Client::builder().user_agent(ua).build()?;
 
     // 先发送 HEAD 请求检查文件大小和类型
@@ -63,17 +83,24 @@ pub async fn get_gif_bytes_ua(url: &str, ua: &str) -> Result<Vec<u8>> {
         log::debug!("Content-Length header not found, proceeding with download");
     }
 
-    // 检查内容类型
-    if let Some(content_type) = head_response.headers().get("content-type") {
-        let content_type_str = content_type.to_str().unwrap_or("");
-        log::debug!("Content-Type: {}", content_type_str);
+    // 获取内容类型
+    let content_type = head_response
+        .headers()
+        .get("content-type")
+        .and_then(|ct| ct.to_str().ok())
+        .unwrap_or("application/octet-stream")
+        .to_string();
 
-        // 如果不是图片类型，记录警告但继续处理
-        if !content_type_str.starts_with("image/") {
-            log::debug!(
-                "Warning: Content-Type is not image, but proceeding anyway: {}",
-                content_type_str
-            );
+    log::debug!("Content-Type: {}", content_type);
+
+    // 如果需要检查类型
+    if let Some(ref check_type) = check_image_type {
+        if !content_type.contains(check_type) {
+            return Err(anyhow!(
+                "Content-Type {} does not match expected type {}",
+                content_type,
+                check_type
+            ));
         }
     }
 
@@ -87,7 +114,7 @@ pub async fn get_gif_bytes_ua(url: &str, ua: &str) -> Result<Vec<u8>> {
 
     let bytes = response.bytes().await?;
 
-    // 再次检查实际下载的文件大小（防止服务器返回的 Content-Length 不准确）
+    // 再次检查实际下载的文件大小
     if bytes.len() > MAX_FILE_SIZE {
         return Err(anyhow!(
             "Downloaded file too large: {:.2} MB (max: {:.2} MB)",
@@ -97,7 +124,7 @@ pub async fn get_gif_bytes_ua(url: &str, ua: &str) -> Result<Vec<u8>> {
     }
 
     log::debug!("Successfully downloaded {} bytes", bytes.len());
-    Ok(bytes.to_vec())
+    Ok((bytes.to_vec(), content_type))
 }
 
 /// 截断描述文本到指定长度
