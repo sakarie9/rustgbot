@@ -7,7 +7,7 @@ use url::Url;
 pub mod models;
 pub use models::*;
 
-pub const MAX_FILE_SIZE: usize = 10 * 1024 * 1024; // 10MB
+pub const MAX_FILE_SIZE: usize = 10 * 1000 * 1000; // 10MB
 pub const GENERAL_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36";
 pub const SUMMARY_MAX_LENGTH: usize = 600;
 pub const SUMMARY_MAX_MAX_LENGTH: usize = 800;
