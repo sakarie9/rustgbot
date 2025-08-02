@@ -362,7 +362,7 @@ impl BBCodeTag {
     }
 
     fn should_remove_content(&self) -> bool {
-        matches!(self, BBCodeTag::Img | BBCodeTag::Sticker(_))
+        matches!(self, BBCodeTag::Img | BBCodeTag::Sticker(_) | BBCodeTag::Quote)
     }
 
     fn is_self_closing(&self) -> bool {

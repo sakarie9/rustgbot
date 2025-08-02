@@ -8,7 +8,8 @@ mod nga_tests {
     #[ignore = "需要网络，仅手动测试"]
     async fn test_get_nga_page() {
         dotenv().ok();
-        let url = "https://ngabbs.com/read.php?tid=44662667";
+        let url = "https://bbs.nga.cn/read.php?pid=834397272"; // quote example
+        // let url = "https://ngabbs.com/read.php?tid=44662667";
         // let url = "https://ngabbs.com/read.php?tid=44416669";
         // let url = "https://ngabbs.com/read.php?tid=21929866";
         // let url = "https://ngabbs.com/read.php?tid=41814733";
