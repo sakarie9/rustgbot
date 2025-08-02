@@ -268,6 +268,8 @@ enum BBCodeTag {
     Table,                     // 表格标签
     TableRow,                  // 表格行标签
     TableCell(Option<String>), // 表格单元格标签，可能有宽度参数如td40
+    Pid(Option<String>),       // pid标签，可能有参数，用于回复帖子中的 Quote 清理
+    Uid(Option<String>),       // uid标签，可能有参数，用于回复帖子中的 Quote 清理
 }
 
 impl BBCodeTag {
@@ -285,6 +287,8 @@ impl BBCodeTag {
             "table" => Some(BBCodeTag::Table),
             "tr" => Some(BBCodeTag::TableRow),
             "td" => Some(BBCodeTag::TableCell(None)),
+            "pid" => Some(BBCodeTag::Pid(None)),
+            "uid" => Some(BBCodeTag::Uid(None)),
             _ => {
                 if tag.starts_with("url=") {
                     // 处理带参数的URL标签，如 [url=https://x.com]
@@ -297,6 +301,14 @@ impl BBCodeTag {
                     // 处理带宽度参数的表格单元格，如 td40
                     let width = tag.strip_prefix("td").unwrap_or("").to_string();
                     Some(BBCodeTag::TableCell(Some(width)))
+                } else if tag.starts_with("pid=") {
+                    // 处理带参数的pid标签，如 [pid=123456789,12345678,2]
+                    let params = tag.strip_prefix("pid=").unwrap_or("").to_string();
+                    Some(BBCodeTag::Pid(Some(params)))
+                } else if tag.starts_with("uid=") {
+                    // 处理带参数的uid标签，如 [uid=12345678]
+                    let params = tag.strip_prefix("uid=").unwrap_or("").to_string();
+                    Some(BBCodeTag::Uid(Some(params)))
                 } else if tag.starts_with("s:ac:") || tag.starts_with("s:") {
                     // 表情标签，如 s:ac:赞同, s:ac:cry 等
                     Some(BBCodeTag::Sticker(tag.to_string()))
@@ -314,7 +326,7 @@ impl BBCodeTag {
             BBCodeTag::Underline => "<u>".to_string(),
             BBCodeTag::Strike => "<s>".to_string(),
             BBCodeTag::Delete => "<del>".to_string(),
-            BBCodeTag::Quote => "".to_string(), // Quote 标签被移除
+            BBCodeTag::Quote => "<blockquote>".to_string(),
             BBCodeTag::Url(url) => {
                 if let Some(href) = url {
                     format!("<a href=\"{}\">", href)
@@ -334,6 +346,8 @@ impl BBCodeTag {
             BBCodeTag::Table => "\n<pre>".to_string(), // 使用 <pre> 标签包裹表格内容
             BBCodeTag::TableRow => "".to_string(),
             BBCodeTag::TableCell(_) => "".to_string(),
+            BBCodeTag::Pid(_) => "".to_string(), // pid标签被移除，只保留内容
+            BBCodeTag::Uid(_) => "".to_string(), // uid标签被移除，只保留内容
         }
     }
 
@@ -344,7 +358,7 @@ impl BBCodeTag {
             BBCodeTag::Underline => "</u>".to_string(),
             BBCodeTag::Strike => "</s>".to_string(),
             BBCodeTag::Delete => "</del>".to_string(),
-            BBCodeTag::Quote => "".to_string(),
+            BBCodeTag::Quote => "</blockquote>".to_string(),
             BBCodeTag::Url(_) => "</a>".to_string(),
             BBCodeTag::Img => "".to_string(),
             BBCodeTag::Collapse(title) => {
@@ -358,11 +372,13 @@ impl BBCodeTag {
             BBCodeTag::Table => "</pre>".to_string(),
             BBCodeTag::TableRow => "\n".to_string(),
             BBCodeTag::TableCell(_) => " │ ".to_string(),
+            BBCodeTag::Pid(_) => "".to_string(), // pid标签被移除，只保留内容
+            BBCodeTag::Uid(_) => "".to_string(), // uid标签被移除，只保留内容
         }
     }
 
     fn should_remove_content(&self) -> bool {
-        matches!(self, BBCodeTag::Img | BBCodeTag::Sticker(_) | BBCodeTag::Quote)
+        matches!(self, BBCodeTag::Img | BBCodeTag::Sticker(_))
     }
 
     fn is_self_closing(&self) -> bool {
@@ -615,6 +631,8 @@ impl BBCodeParser {
             BBCodeTag::Table => "table".to_string(),
             BBCodeTag::TableRow => "tr".to_string(),
             BBCodeTag::TableCell(_) => "td".to_string(),
+            BBCodeTag::Pid(_) => "pid".to_string(),
+            BBCodeTag::Uid(_) => "uid".to_string(),
         }
     }
 

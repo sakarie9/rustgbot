@@ -219,7 +219,7 @@ mod nga_tests {
         let input = "[quote]引用内容[/quote]";
         let mut parser = BBCodeParser::new(input);
         let result = parser.parse();
-        assert_eq!(result, "引用内容");
+        assert_eq!(result, "<blockquote>引用内容</blockquote>");
     }
 
     #[test]
@@ -252,7 +252,7 @@ mod nga_tests {
 
         // 测试包含所有类型标签的复杂示例，包括嵌套
         let complex_input = "[quote][b]粗体引用[i]斜体[/i][/b][/quote] &quot;文本&quot; [img]image.png[/img]\n\n\n\n新行";
-        let complex_expected = "<b>粗体引用<i>斜体</i></b> \"文本\" \n\n新行";
+        let complex_expected = "<blockquote><b>粗体引用<i>斜体</i></b></blockquote> \"文本\" \n\n新行";
         assert_eq!(clean_body(complex_input), complex_expected);
     }
 
@@ -265,7 +265,7 @@ mod nga_tests {
 
         // 测试包含所有类型标签的复杂示例，包括嵌套
         let complex_input = "[quote][b]粗体引用[i]斜体[/i][/b][/quote] &quot;文本&quot; [img]image.png[/img]\n\n\n\n新行";
-        let complex_expected = "<b>粗体引用<i>斜体</i></b> \"文本\" \n\n新行";
+        let complex_expected = "<blockquote><b>粗体引用<i>斜体</i></b></blockquote> \"文本\" \n\n新行";
         assert_eq!(clean_body(complex_input), complex_expected);
 
         // 测试表情标签
