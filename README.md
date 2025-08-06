@@ -74,6 +74,7 @@ Bot 会自动监听群组和私聊中的消息，当检测到支持的链接时�
 | 环境变量 | 说明 | 必需 |
 |---------|------|------|
 | `TELOXIDE_TOKEN` | Telegram Bot Token | ✅ |
+| `TELEGRAM_PROXY` | Telegram 代理 `http://proxy.example:4545` | ❌ |
 | `NGA_UID` | NGA Cookie 用于游客不可见的帖子的访问 | ❌ |
 | `NGA_CID` | NGA Cookie CID，用于游客不可见的帖子的访问 | ❌ |
 | `PIXIV_COOKIE` | 填写 Cookie 中 `PHPSESSID` 的值，格式为 `1234567_aaaaaaaaaaaaaaaaaaaaa`。没有有效的 Cookie 将无法获取受限制的图片 | ❌ |

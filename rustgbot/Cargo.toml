@@ -24,3 +24,4 @@ regex = { workspace = true }
 dotenv = { workspace = true }
 url = { workspace = true }
 anyhow = { workspace = true }
+reqwest = { workspace = true }
