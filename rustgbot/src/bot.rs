@@ -433,14 +433,11 @@ async fn send_media_group_with_download(
 
     // 为第一个媒体添加caption
     let media_count = media_group.len();
-    if let Some(first_media) = media_group.first_mut() {
-        match first_media {
-            InputMedia::Photo(photo) => {
-                photo.caption = Some(caption);
-                photo.parse_mode = Some(ParseMode::Html);
-            }
-            _ => {}
-        }
+    if let Some(first_media) = media_group.first_mut()
+        && let InputMedia::Photo(photo) = first_media
+    {
+        photo.caption = Some(caption);
+        photo.parse_mode = Some(ParseMode::Html);
     }
 
     // 发送媒体组

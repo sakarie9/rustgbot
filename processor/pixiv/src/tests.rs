@@ -1,5 +1,5 @@
 #[cfg(test)]
-mod tests {
+mod pixiv_tests {
     use crate::{
         get_pixiv,
         utils::{build_pixiv_caption, convert_to_proxy_url},

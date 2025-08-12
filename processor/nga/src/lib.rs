@@ -49,17 +49,17 @@ impl LinkProcessor for NGALinkProcessor {
 /// NGA 模块的错误类型
 #[derive(Debug)]
 enum NGAError {
-    NetworkError(reqwest::Error),
-    ParseError(String),
-    HttpError { status: u16, message: String },
+    Network(reqwest::Error),
+    Parse(String),
+    Http { status: u16, message: String },
 }
 
 impl std::fmt::Display for NGAError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            NGAError::NetworkError(e) => write!(f, "网络请求失败: {}", e),
-            NGAError::ParseError(msg) => write!(f, "解析页面失败: {}", msg),
-            NGAError::HttpError { status, message } => {
+            NGAError::Network(e) => write!(f, "网络请求失败: {}", e),
+            NGAError::Parse(msg) => write!(f, "解析页面失败: {}", msg),
+            NGAError::Http { status, message } => {
                 write!(f, "HTTP 错误 {}: {}", status, message)
             }
         }
@@ -70,13 +70,13 @@ impl std::error::Error for NGAError {}
 
 impl From<reqwest::Error> for NGAError {
     fn from(error: reqwest::Error) -> Self {
-        NGAError::NetworkError(error)
+        NGAError::Network(error)
     }
 }
 
 impl From<anyhow::Error> for NGAError {
     fn from(error: anyhow::Error) -> Self {
-        NGAError::ParseError(error.to_string())
+        NGAError::Parse(error.to_string())
     }
 }
 
@@ -123,7 +123,7 @@ impl NGAFetcher {
     /// 仅解析 HTML 内容
     fn parse_page(url: &str, html: &str) -> NGAResult<NGAPage> {
         parse_nga_page(url, html)
-            .ok_or_else(|| NGAError::ParseError("Failed to parse NGA page".to_string()))
+            .ok_or_else(|| NGAError::Parse("Failed to parse NGA page".to_string()))
     }
 }
 
@@ -170,7 +170,7 @@ async fn get_nga_html(url: &str) -> NGAResult<String> {
             _ => format!("HTTP 请求失败，状态码: {}", status_code),
         };
 
-        Err(NGAError::HttpError {
+        Err(NGAError::Http {
             status: status_code,
             message: error_message,
         })
@@ -283,7 +283,7 @@ impl BBCodeTag {
             "quote" => Some(BBCodeTag::Quote),
             "url" => Some(BBCodeTag::Url(None)),
             "img" => Some(BBCodeTag::Img),
-            "collapse" => Some(BBCodeTag::Collapse(None)),  // 无标题的collapse标签
+            "collapse" => Some(BBCodeTag::Collapse(None)), // 无标题的collapse标签
             "table" => Some(BBCodeTag::Table),
             "tr" => Some(BBCodeTag::TableRow),
             "td" => Some(BBCodeTag::TableCell(None)),
@@ -341,7 +341,7 @@ impl BBCodeTag {
                 } else {
                     "".to_string()
                 }
-            },
+            }
             BBCodeTag::Sticker(_) => "".to_string(), // 表情标签被移除
             BBCodeTag::Table => "\n<pre>".to_string(), // 使用 <pre> 标签包裹表格内容
             BBCodeTag::TableRow => "".to_string(),
@@ -367,7 +367,7 @@ impl BBCodeTag {
                 } else {
                     "".to_string()
                 }
-            },
+            }
             BBCodeTag::Sticker(_) => "".to_string(),
             BBCodeTag::Table => "</pre>".to_string(),
             BBCodeTag::TableRow => "\n".to_string(),
@@ -518,11 +518,7 @@ impl BBCodeParser {
             .iter()
             .collect::<String>();
 
-        if let Some(tag) = BBCodeTag::from_tag_name(&tag_content) {
-            Some((tag, tag_end + 1))
-        } else {
-            None
-        }
+        BBCodeTag::from_tag_name(&tag_content).map(|tag| (tag, tag_end + 1))
     }
 
     fn find_matching_closing_tag(&self, tag: &BBCodeTag, start: usize) -> Option<usize> {
@@ -544,10 +540,10 @@ impl BBCodeParser {
                     }
                 } else {
                     // 这可能是一个开始标签
-                    if let Some((inner_tag, _)) = self.parse_opening_tag_at(pos) {
-                        if self.get_tag_name(&inner_tag) == tag_name {
-                            depth += 1;
-                        }
+                    if let Some((inner_tag, _)) = self.parse_opening_tag_at(pos)
+                        && self.get_tag_name(&inner_tag) == tag_name
+                    {
+                        depth += 1;
                     }
                 }
             }
@@ -573,11 +569,7 @@ impl BBCodeParser {
 
         let tag_content = self.input[pos + 1..tag_end].iter().collect::<String>();
 
-        if let Some(tag) = BBCodeTag::from_tag_name(&tag_content) {
-            Some((tag, tag_end + 1))
-        } else {
-            None
-        }
+        BBCodeTag::from_tag_name(&tag_content).map(|tag| (tag, tag_end + 1))
     }
 
     fn parse_closing_tag_at(&self, pos: usize, expected_tag: &str) -> Option<usize> {

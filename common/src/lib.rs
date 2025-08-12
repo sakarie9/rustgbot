@@ -82,17 +82,17 @@ async fn download_file_internal(
 
     // 检查内容长度
     if let Some(content_length) = head_response.headers().get("content-length") {
-        if let Ok(size_str) = content_length.to_str() {
-            if let Ok(size) = size_str.parse::<usize>() {
-                log::debug!("File size: {} bytes ({})", size, convert_bytes(size as f64));
+        if let Ok(size_str) = content_length.to_str()
+            && let Ok(size) = size_str.parse::<usize>()
+        {
+            log::debug!("File size: {} bytes ({})", size, convert_bytes(size as f64));
 
-                if size > MAX_FILE_SIZE {
-                    return Err(anyhow!(
-                        "File too large: {} (max: {})",
-                        convert_bytes(size as f64),
-                        convert_bytes(MAX_FILE_SIZE as f64)
-                    ));
-                }
+            if size > MAX_FILE_SIZE {
+                return Err(anyhow!(
+                    "File too large: {} (max: {})",
+                    convert_bytes(size as f64),
+                    convert_bytes(MAX_FILE_SIZE as f64)
+                ));
             }
         }
     } else {
@@ -110,14 +110,14 @@ async fn download_file_internal(
     log::debug!("Content-Type: {}", content_type);
 
     // 如果需要检查类型
-    if let Some(ref check_type) = check_image_type {
-        if !content_type.contains(check_type) {
-            return Err(anyhow!(
-                "Content-Type {} does not match expected type {}",
-                content_type,
-                check_type
-            ));
-        }
+    if let Some(ref check_type) = check_image_type
+        && !content_type.contains(check_type)
+    {
+        return Err(anyhow!(
+            "Content-Type {} does not match expected type {}",
+            content_type,
+            check_type
+        ));
     }
 
     // 如果检查通过，开始实际下载
@@ -172,8 +172,8 @@ pub fn substring_desc_with_truncation(desc: &str, should_truncate: bool) -> Stri
     let mut cr_pos = None;
 
     // 从 SUMMARY_MAX_LENGTH 位置开始查找换行符
-    for i in SUMMARY_MAX_LENGTH..chars.len() {
-        if chars[i] == '\n' {
+    for (i, c) in chars.iter().enumerate().skip(SUMMARY_MAX_LENGTH) {
+        if *c == '\n' {
             cr_pos = Some(i);
             break;
         }
@@ -204,12 +204,12 @@ pub fn extract_filename_from_url(url: &str, content_type: &str) -> String {
     // 尝试从URL路径中提取文件名
     if let Ok(parsed_url) = url::Url::parse(url) {
         let path = parsed_url.path();
-        if let Some(filename) = Path::new(path).file_name() {
-            if let Some(filename_str) = filename.to_str() {
-                if !filename_str.is_empty() && filename_str != "/" {
-                    return filename_str.to_string();
-                }
-            }
+        if let Some(filename) = Path::new(path).file_name()
+            && let Some(filename_str) = filename.to_str()
+            && !filename_str.is_empty()
+            && filename_str != "/"
+        {
+            return filename_str.to_string();
         }
     }
 
@@ -224,42 +224,42 @@ pub fn guess_content_type_from_url(url: &str) -> Option<String> {
     // 尝试从URL中提取文件扩展名
     if let Ok(parsed_url) = url::Url::parse(url) {
         let path = parsed_url.path();
-        if let Some(extension) = Path::new(path).extension() {
-            if let Some(ext_str) = extension.to_str() {
-                return Some(match ext_str.to_lowercase().as_str() {
-                    // 图片格式
-                    "jpg" | "jpeg" => "image/jpeg".to_string(),
-                    "png" => "image/png".to_string(),
-                    "gif" => "image/gif".to_string(),
-                    "webp" => "image/webp".to_string(),
-                    "bmp" => "image/bmp".to_string(),
-                    "svg" => "image/svg+xml".to_string(),
+        if let Some(extension) = Path::new(path).extension()
+            && let Some(ext_str) = extension.to_str()
+        {
+            return Some(match ext_str.to_lowercase().as_str() {
+                // 图片格式
+                "jpg" | "jpeg" => "image/jpeg".to_string(),
+                "png" => "image/png".to_string(),
+                "gif" => "image/gif".to_string(),
+                "webp" => "image/webp".to_string(),
+                "bmp" => "image/bmp".to_string(),
+                "svg" => "image/svg+xml".to_string(),
 
-                    // 视频格式
-                    "mp4" => "video/mp4".to_string(),
-                    "webm" => "video/webm".to_string(),
-                    "avi" => "video/x-msvideo".to_string(),
-                    "mov" => "video/quicktime".to_string(),
-                    "mkv" => "video/x-matroska".to_string(),
+                // 视频格式
+                "mp4" => "video/mp4".to_string(),
+                "webm" => "video/webm".to_string(),
+                "avi" => "video/x-msvideo".to_string(),
+                "mov" => "video/quicktime".to_string(),
+                "mkv" => "video/x-matroska".to_string(),
 
-                    // 音频格式
-                    "mp3" => "audio/mpeg".to_string(),
-                    "wav" => "audio/wav".to_string(),
-                    "ogg" => "audio/ogg".to_string(),
-                    "flac" => "audio/flac".to_string(),
-                    "aac" => "audio/aac".to_string(),
+                // 音频格式
+                "mp3" => "audio/mpeg".to_string(),
+                "wav" => "audio/wav".to_string(),
+                "ogg" => "audio/ogg".to_string(),
+                "flac" => "audio/flac".to_string(),
+                "aac" => "audio/aac".to_string(),
 
-                    // 文档格式
-                    "pdf" => "application/pdf".to_string(),
-                    "zip" => "application/zip".to_string(),
-                    "rar" => "application/x-rar-compressed".to_string(),
-                    "7z" => "application/x-7z-compressed".to_string(),
-                    "txt" => "text/plain".to_string(),
+                // 文档格式
+                "pdf" => "application/pdf".to_string(),
+                "zip" => "application/zip".to_string(),
+                "rar" => "application/x-rar-compressed".to_string(),
+                "7z" => "application/x-7z-compressed".to_string(),
+                "txt" => "text/plain".to_string(),
 
-                    // 其他格式保持为 application/octet-stream
-                    _ => "application/octet-stream".to_string(),
-                });
-            }
+                // 其他格式保持为 application/octet-stream
+                _ => "application/octet-stream".to_string(),
+            });
         }
     }
     None
