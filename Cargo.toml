@@ -1,9 +1,9 @@
+[profile.release]
+lto = true
+strip = true
+
 [workspace]
-members = [
-    "rustgbot",
-    "common",
-    "processor/*",
-]
+members = ["rustgbot", "common", "processor/*"]
 resolver = "2"
 
 [workspace.dependencies]
@@ -49,7 +49,3 @@ teloxide = { version = "0.17", default-features = false, features = [
     "rustls",
     "ctrlc_handler",
 ] }
-
-[profile.release]
-lto = true
-strip = true
