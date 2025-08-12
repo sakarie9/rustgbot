@@ -3,7 +3,9 @@
 //! 这个模块包含了整个workspace中可能用到的通用工具函数。
 use anyhow::{Result, anyhow};
 use human_bytes::human_bytes;
+use std::cell::RefCell;
 use url::Url;
+
 pub mod models;
 pub use models::*;
 
@@ -11,6 +13,23 @@ pub const MAX_FILE_SIZE: usize = 10 * 1000 * 1000; // 10MB
 pub const GENERAL_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36";
 pub const SUMMARY_MAX_LENGTH: usize = 600;
 pub const SUMMARY_MAX_MAX_LENGTH: usize = 800;
+
+// 线程局部存储，控制是否启用文本截断
+thread_local! {
+    static TRUNCATION_ENABLED: RefCell<bool> = const { RefCell::new(true) };
+}
+
+/// 设置是否启用文本截断
+pub fn set_truncation_enabled(enabled: bool) {
+    TRUNCATION_ENABLED.with(|flag| {
+        *flag.borrow_mut() = enabled;
+    });
+}
+
+/// 获取当前是否启用文本截断
+pub fn is_truncation_enabled() -> bool {
+    TRUNCATION_ENABLED.with(|flag| *flag.borrow())
+}
 
 /// 获取环境变量的值
 pub fn get_env_var(name: &str) -> Option<String> {
@@ -128,6 +147,20 @@ async fn download_file_internal(
 
 /// 截断描述文本到指定长度
 pub fn substring_desc(desc: &str) -> String {
+    // 检查是否启用截断
+    if !is_truncation_enabled() {
+        return desc.trim().to_string();
+    }
+
+    substring_desc_with_truncation(desc, true)
+}
+
+/// 控制是否截断描述文本
+pub fn substring_desc_with_truncation(desc: &str, should_truncate: bool) -> String {
+    if !should_truncate {
+        return desc.trim().to_string();
+    }
+
     let chars: Vec<char> = desc.chars().collect();
 
     // 如果字符数没有超过最大长度，直接返回

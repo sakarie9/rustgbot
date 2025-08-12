@@ -4,7 +4,7 @@ use regex::RegexSet;
 use std::sync::OnceLock;
 use teloxide::dispatching::dialogue::GetChatId;
 use teloxide::prelude::*;
-use teloxide::types::{Message, Update};
+use teloxide::types::{Message, MessageId, Update};
 use teloxide::{Bot, dptree};
 
 use processor_bili::BiliBiliProcessor;
@@ -129,40 +129,50 @@ async fn process_text_message(bot: &Bot, msg: Message) {
     }
 
     if let Some(responses) = process_links(text).await {
-        for resp in responses {
-            let send_result = match resp {
-                BotResponse::Text(text) => {
-                    MessageSenderBuilder::new(chat_id, text)
-                        .message_id(msg.id)
-                        .send_message(bot)
-                        .await
-                }
-                BotResponse::Photo(media) => {
-                    MessageSenderBuilder::new(chat_id, media.caption)
-                        .message_id(msg.id)
-                        .urls(media.urls)
-                        .spoiler(media.spoiler)
-                        .send_photo(bot)
-                        .await
-                }
-                BotResponse::Error(err) => {
-                    MessageSenderBuilder::new(chat_id, err)
-                        .message_id(msg.id)
-                        .send_message(bot)
-                        .await
-                }
-            };
+        send_bot_responses(bot, chat_id, msg.id, responses).await;
+    }
+}
 
-            // 记录发送失败的错误，但不中断处理流程
-            if let Err(e) = send_result {
-                log::error!("Failed to send message to chat {}: {}", chat_id, e);
-                if let Err(fallback_err) = MessageSenderBuilder::new(chat_id, e.to_string())
-                    .message_id(msg.id)
+/// 发送机器人响应到聊天
+pub async fn send_bot_responses(
+    bot: &Bot,
+    chat_id: ChatId,
+    message_id: MessageId,
+    responses: Vec<BotResponse>,
+) {
+    for resp in responses {
+        let send_result = match resp {
+            BotResponse::Text(text) => {
+                MessageSenderBuilder::new(chat_id, text)
+                    .message_id(message_id)
                     .send_message(bot)
                     .await
-                {
-                    log::error!("Failed to send fallback error message: {}", fallback_err);
-                }
+            }
+            BotResponse::Photo(media) => {
+                MessageSenderBuilder::new(chat_id, media.caption)
+                    .message_id(message_id)
+                    .urls(media.urls)
+                    .spoiler(media.spoiler)
+                    .send_photo(bot)
+                    .await
+            }
+            BotResponse::Error(err) => {
+                MessageSenderBuilder::new(chat_id, err)
+                    .message_id(message_id)
+                    .send_message(bot)
+                    .await
+            }
+        };
+
+        // 记录发送失败的错误，但不中断处理流程
+        if let Err(e) = send_result {
+            log::error!("Failed to send message to chat {}: {}", chat_id, e);
+            if let Err(fallback_err) = MessageSenderBuilder::new(chat_id, e.to_string())
+                .message_id(message_id)
+                .send_message(bot)
+                .await
+            {
+                log::error!("Failed to send fallback error message: {}", fallback_err);
             }
         }
     }
@@ -175,7 +185,7 @@ fn should_skip_message(msg: &Message) -> bool {
     }
     if let Some(preview) = msg.link_preview_options() {
         // 链接存在 fixupx.com 或 fxtwitter.com 跳过
-        if preview.url.as_deref().map_or(false, |url| {
+        if preview.url.as_deref().is_some_and(|url| {
             url.contains("fixupx.com") || url.contains("fxtwitter.com")
         }) {
             return true;
@@ -196,7 +206,7 @@ async fn process_private_message(bot: &Bot, msg: Message) {
         }
         // 处理动画消息（如GIF）
         let gif_id = animation.file.id.clone();
-        if let Err(e) = bot::send_gif_from_fileid(&bot, msg.chat.id, gif_id).await {
+        if let Err(e) = bot::send_gif_from_fileid(bot, msg.chat.id, gif_id).await {
             log::error!("Failed to send GIF: {}", e);
         }
     }
@@ -204,6 +214,16 @@ async fn process_private_message(bot: &Bot, msg: Message) {
 
 // 处理链接
 async fn process_links(text: &str) -> Option<Vec<BotResponse>> {
+    process_links_internal(text, true).await
+}
+
+// 处理链接（完整文本，不截断）
+pub async fn process_links_full(text: &str) -> Option<Vec<BotResponse>> {
+    process_links_internal(text, false).await
+}
+
+// 内部链接处理函数
+async fn process_links_internal(text: &str, is_truncation: bool) -> Option<Vec<BotResponse>> {
     // 快速检查是否包含任何可能的链接特征
     if !text.contains("://")
         && !text.contains(".com")
@@ -219,6 +239,9 @@ async fn process_links(text: &str) -> Option<Vec<BotResponse>> {
     } else {
         text
     };
+
+    // 设置截断标志
+    common::set_truncation_enabled(is_truncation);
 
     let processors = PROCESSORS.get_or_init(init_processors);
     let regex_set = REGEX_SET.get_or_init(init_regex_set);
@@ -238,8 +261,10 @@ async fn process_links(text: &str) -> Option<Vec<BotResponse>> {
 
         // 使用对应的正则表达式进行详细匹配
         for captures in processor.regex().captures_iter(text) {
+            let processing_type = if is_truncation { "full link" } else { "link" };
             log::info!(
-                "Processing link with {}: {}",
+                "Processing {} with {}: {}",
+                processing_type,
                 processor.name(),
                 captures.get(0).unwrap().as_str()
             );
@@ -253,7 +278,8 @@ async fn process_links(text: &str) -> Option<Vec<BotResponse>> {
                 }
                 Err(e) => {
                     let error = format!(
-                        "Failed to process link with {}\n{}\n{}",
+                        "Failed to process {} with {}\n{}\n{}",
+                        processing_type,
                         processor.name(),
                         captures.get(0).unwrap().as_str(),
                         e
