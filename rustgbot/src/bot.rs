@@ -2,8 +2,6 @@ use anyhow::Result;
 use common::convert_bytes;
 use common::extract_filename_from_url;
 use common::guess_content_type_from_url;
-use teloxide::ApiError;
-use teloxide::RequestError;
 use teloxide::payloads::SendAnimation;
 use teloxide::payloads::SendPhoto;
 use teloxide::prelude::*;
@@ -411,14 +409,32 @@ async fn send_media_group_with_download(
                 downloaded_files.push((file_bytes, content_type, file_name, url.clone()));
             }
             Err(_e) => {
-                // 存在失败直接结束
-                // let _ = send_reply_text(bot, chat_id, message_id, "下载失败".to_string()).await;
-                return Err(RequestError::Api(ApiError::Unknown(
-                    "Download media group failed".to_string(),
-                )));
+                // 存在失败不直接结束，跳过
+                log::warn!("Failed to download media file: {url}");
+                // return Err(RequestError::Api(ApiError::Unknown(
+                //     "Download media group failed".to_string(),
+                // )));
             }
         }
     }
+
+    let caption = if downloaded_files.len() != media_urls.len() {
+        // 如果下载的文件数量和URL数量不一致，添加警告信息到caption
+        log::warn!(
+            "Not all media files were downloaded successfully: {}/{}",
+            downloaded_files.len(),
+            media_urls.len()
+        );
+        caption
+            + format!(
+                "\n[{}/{} Media Downloaded]",
+                downloaded_files.len(),
+                media_urls.len()
+            )
+            .as_str()
+    } else {
+        caption
+    };
 
     // 构建媒体组
     let mut media_group = Vec::new();
@@ -461,206 +477,122 @@ pub async fn send_reply_text(
         .await
 }
 
-// /// 尝试从URL发送动画
-// async fn send_animation_from_url(
-//     bot: &Bot,
-//     chat_id: ChatId,
-//     message_id: MessageId,
-//     url: &str,
-//     caption: &str,
-// ) -> ResponseResult<Message> {
-//     log::debug!(
-//         "send_animation_from_url: {}\n\t{}\n\t{}",
-//         chat_id,
-//         caption,
-//         url
-//     );
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use teloxide::types::{ChatId, MessageId};
 
-//     let parsed_url = match url::Url::parse(url) {
-//         Ok(url) => url,
-//         Err(e) => {
-//             return Err(RequestError::Api(ApiError::Unknown(format!(
-//                 "Invalid URL: {}",
-//                 e
-//             ))));
-//         }
-//     };
+    // Mock bot for testing
+    struct MockBot;
 
-//     let input_file = InputFile::url(parsed_url);
+    impl MockBot {
+        fn bot() -> Bot {
+            dotenv::dotenv().ok();
+            Bot::from_env()
+        }
+        fn get_chat_id() -> ChatId {
+            ChatId(
+                common::get_env_var("TEST_CHAT_ID")
+                    .unwrap()
+                    .parse()
+                    .unwrap(),
+            )
+        }
+        fn get_photo_url() -> String {
+            "https://img.nga.178.com/attachments/mon_202505/25/-9lddQvas9-39mmK2dT1kSh2-sg.jpg"
+                .to_string()
+        }
+        fn get_photos_url() -> Vec<String> {
+            vec![
+                "https://img.nga.178.com/attachments/mon_202505/25/-9lddQvas9-39mmK2dT1kSh2-sg.jpg"
+                    .to_string(),
+                "https://img.nga.178.com/attachments/mon_202506/27/-9lddQ8s1s-3ltyK1vT3cSk5-sg.jpg"
+                    .to_string(),
+            ]
+        }
+    }
 
-//     bot.send_animation(chat_id, input_file)
-//         .reply_parameters(ReplyParameters::new(message_id))
-//         .parse_mode(ParseMode::Html)
-//         .caption(caption)
-//         .await
-// }
+    #[tokio::test]
+    #[ignore = "需要真实bot token和chat_id，仅手动测试"]
+    async fn test_send_photo_empty_urls() {
+        let bot = MockBot::bot();
+        let chat_id = MockBot::get_chat_id();
+        let message_id = MessageId(123);
+        let photo_urls = vec![];
+        let text = "没有图片的消息".to_string();
+        let spoiler = false;
 
-// /// 尝试从URL发送视频
-// async fn send_video_from_url(
-//     bot: &Bot,
-//     chat_id: ChatId,
-//     message_id: MessageId,
-//     url: &str,
-//     caption: &str,
-// ) -> ResponseResult<Message> {
-//     log::debug!("send_video_from_url: {}\n\t{}\n\t{}", chat_id, caption, url);
+        let result = MessageSenderBuilder::new(chat_id, text)
+            .message_id(message_id)
+            .urls(photo_urls)
+            .spoiler(spoiler)
+            .send_photo(&bot)
+            .await;
 
-//     let parsed_url = match url::Url::parse(url) {
-//         Ok(url) => url,
-//         Err(e) => {
-//             return Err(RequestError::Api(ApiError::Unknown(format!(
-//                 "Invalid URL: {}",
-//                 e
-//             ))));
-//         }
-//     };
+        assert!(result.is_ok());
+    }
 
-//     let input_file = InputFile::url(parsed_url);
+    #[tokio::test]
+    #[ignore = "需要真实bot token和chat_id，仅手动测试"]
+    async fn test_send_photo_single_url() {
+        let bot = MockBot::bot();
+        let chat_id = MockBot::get_chat_id();
+        let message_id = MessageId(123);
+        let photo_urls = vec![MockBot::get_photo_url()];
+        let text = "单张图片消息".to_string();
+        let spoiler = false;
 
-//     bot.send_video(chat_id, input_file)
-//         .reply_parameters(ReplyParameters::new(message_id))
-//         .parse_mode(ParseMode::Html)
-//         .caption(caption)
-//         .await
-// }
+        let result = MessageSenderBuilder::new(chat_id, text)
+            .message_id(message_id)
+            .urls(photo_urls)
+            .spoiler(spoiler)
+            .send_photo(&bot)
+            .await;
 
-// /// 尝试让Telegram直接从URL下载文件
-// pub async fn send_document_from_url(
-//     bot: &Bot,
-//     chat_id: ChatId,
-//     message_id: MessageId,
-//     url: &str,
-//     caption: &str,
-// ) -> ResponseResult<Message> {
-//     log::debug!(
-//         "send_document_from_url: {}\n\t{}\n\t{}",
-//         chat_id,
-//         caption,
-//         url
-//     );
+        assert!(result.is_ok());
+    }
 
-//     // 尝试解析URL
-//     let parsed_url = match url::Url::parse(url) {
-//         Ok(url) => url,
-//         Err(e) => {
-//             return Err(RequestError::Api(ApiError::Unknown(format!(
-//                 "Invalid URL: {}",
-//                 e
-//             ))));
-//         }
-//     };
+    #[tokio::test]
+    #[ignore = "需要真实bot token和chat_id，仅手动测试"]
+    async fn test_send_photo_multiple_urls() {
+        let bot = MockBot::bot();
+        let chat_id = MockBot::get_chat_id();
+        let message_id = MessageId(123);
+        let photo_urls = MockBot::get_photos_url();
+        let text = "多张图片消息".to_string();
+        let spoiler = false;
 
-//     let input_file = InputFile::url(parsed_url);
+        let result = MessageSenderBuilder::new(chat_id, text)
+            .message_id(message_id)
+            .urls(photo_urls)
+            .spoiler(spoiler)
+            .send_photo(&bot)
+            .await;
 
-//     // 先尝试作为文档发送
-//     bot.send_document(chat_id, input_file)
-//         .reply_parameters(ReplyParameters::new(message_id))
-//         .parse_mode(ParseMode::Html)
-//         .caption(caption)
-//         .await
-// }
+        // 应该调用 send_media_group，预期失败但不panic
+        assert!(result.is_ok());
+    }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use teloxide::types::{ChatId, MessageId};
+    #[test]
+    fn test_photo_urls_validation() {
+        // 测试URL格式验证
+        let valid_urls = MockBot::get_photos_url();
 
-//     // Mock bot for testing
-//     struct MockBot;
+        for url in valid_urls {
+            // 简单测试URL字符串包含协议
+            assert!(url.starts_with("http"), "URL应该以http开头: {}", url);
+        }
 
-//     impl MockBot {
-//         fn new() -> Bot {
-//             dotenv::dotenv().ok();
-//             Bot::from_env()
-//         }
-//         fn get_chat_id() -> ChatId {
-//             ChatId(
-//                 common::get_env_var("TEST_CHAT_ID")
-//                     .unwrap()
-//                     .parse()
-//                     .unwrap(),
-//             )
-//         }
-//         fn get_photo_url() -> String {
-//             "https://img.nga.178.com/attachments/mon_202505/25/-9lddQvas9-39mmK2dT1kSh2-sg.jpg"
-//                 .to_string()
-//         }
-//         fn get_photos_url() -> Vec<String> {
-//             vec![
-//                 "https://img.nga.178.com/attachments/mon_202505/25/-9lddQvas9-39mmK2dT1kSh2-sg.jpg"
-//                     .to_string(),
-//                 "https://img.nga.178.com/attachments/mon_202506/27/-9lddQ8s1s-3ltyK1vT3cSk5-sg.jpg"
-//                     .to_string(),
-//             ]
-//         }
-//     }
+        let invalid_urls = vec!["not_a_url", "ftp://invalid.com/file.jpg", ""];
 
-//     #[tokio::test]
-//     #[ignore = "需要真实bot token和chat_id，仅手动测试"]
-//     async fn test_send_photo_empty_urls() {
-//         let bot = MockBot::new();
-//         let chat_id = MockBot::get_chat_id();
-//         let message_id = MessageId(123);
-//         let photo_urls = vec![];
-//         let text = "没有图片的消息".to_string();
-//         let spoiler = false;
-
-//         let result = send_photo(&bot, chat_id, message_id, photo_urls, text, spoiler).await;
-
-//         assert!(!result.is_err());
-//     }
-
-//     #[tokio::test]
-//     #[ignore = "需要真实bot token和chat_id，仅手动测试"]
-//     async fn test_send_photo_single_url() {
-//         let bot = MockBot::new();
-//         let chat_id = MockBot::get_chat_id();
-//         let message_id = MessageId(123);
-//         let photo_urls = vec![MockBot::get_photo_url()];
-//         let text = "单张图片消息".to_string();
-//         let spoiler = false;
-
-//         let result = send_photo(&bot, chat_id, message_id, photo_urls, text, spoiler).await;
-
-//         assert!(!result.is_err());
-//     }
-
-//     #[tokio::test]
-//     #[ignore = "需要真实bot token和chat_id，仅手动测试"]
-//     async fn test_send_photo_multiple_urls() {
-//         let bot = MockBot::new();
-//         let chat_id = MockBot::get_chat_id();
-//         let message_id = MessageId(123);
-//         let photo_urls = MockBot::get_photos_url();
-//         let text = "多张图片消息".to_string();
-//         let spoiler = false;
-
-//         let result = send_photo(&bot, chat_id, message_id, photo_urls, text, spoiler).await;
-
-//         // 应该调用 send_media_group，预期失败但不panic
-//         assert!(!result.is_err());
-//     }
-
-//     #[test]
-//     fn test_photo_urls_validation() {
-//         // 测试URL格式验证
-//         let valid_urls = MockBot::get_photos_url();
-
-//         for url in valid_urls {
-//             // 简单测试URL字符串包含协议
-//             assert!(url.starts_with("http"), "URL应该以http开头: {}", url);
-//         }
-
-//         let invalid_urls = vec!["not_a_url", "ftp://invalid.com/file.jpg", ""];
-
-//         for url in invalid_urls {
-//             if url.is_empty() {
-//                 continue; // 空字符串是特殊情况
-//             }
-//             // 测试不以http开头的URL
-//             if url == "not_a_url" || url.starts_with("ftp://") {
-//                 assert!(!url.starts_with("http"), "无效URL不应该以http开头: {}", url);
-//             }
-//         }
-//     }
-// }
+        for url in invalid_urls {
+            if url.is_empty() {
+                continue; // 空字符串是特殊情况
+            }
+            // 测试不以http开头的URL
+            if url == "not_a_url" || url.starts_with("ftp://") {
+                assert!(!url.starts_with("http"), "无效URL不应该以http开头: {}", url);
+            }
+        }
+    }
+}
