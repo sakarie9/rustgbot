@@ -40,10 +40,11 @@ async fn get_pixiv_image(id: &str) -> Result<ProcessorResultMedia> {
             caption: text,
             urls: Vec::new(),
             spoiler: false,
+            original_urls: None,
         });
     };
 
-    let urls = if body.page_count > 1 {
+    let original_urls = if body.page_count > 1 {
         get_urls_from_count(url, body.page_count)
     } else {
         vec![url.to_string()]
@@ -54,7 +55,8 @@ async fn get_pixiv_image(id: &str) -> Result<ProcessorResultMedia> {
 
     Ok(ProcessorResultMedia {
         caption: text,
-        urls,
-        spoiler: is_restrict, // 如果是限制内容，设置 spoiler 为 true
+        urls: original_urls.clone(),        // 这里会在后续被代理URL替换
+        spoiler: is_restrict,               // 如果是限制内容，设置 spoiler 为 true
+        original_urls: Some(original_urls), // 保存原始URL用于下载
     })
 }

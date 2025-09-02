@@ -105,7 +105,8 @@ impl NGAFetcher {
         Ok(common::ProcessorResultMedia {
             caption: text,
             urls,
-            spoiler: false, // NGA 页面通常不需要 spoiler
+            spoiler: false,      // NGA 页面通常不需要 spoiler
+            original_urls: None, // NGA 不需要特殊的下载处理
         })
     }
 

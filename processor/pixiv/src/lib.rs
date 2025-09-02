@@ -3,7 +3,7 @@ use regex::Regex;
 use std::sync::OnceLock;
 
 mod api;
-mod constants;
+pub mod constants;
 mod models;
 mod processor;
 mod tests;

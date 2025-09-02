@@ -4,6 +4,8 @@ pub struct ProcessorResultMedia {
     pub caption: String,
     pub urls: Vec<String>,
     pub spoiler: bool,
+    /// 原始URL列表，用于下载时使用（如果为空则使用urls）
+    pub original_urls: Option<Vec<String>>,
 }
 
 /// 统一的处理器结果类型
@@ -69,14 +71,14 @@ pub type ProcessorResultType = Result<ProcessorResult, ProcessorError>;
 pub trait LinkProcessor: Send + Sync {
     /// 获取正则表达式模式字符串
     fn pattern(&self) -> &'static str;
-    
+
     /// 获取匹配的正则表达式（用于详细匹配）
     fn regex(&self) -> &regex::Regex;
-    
+
     /// 处理匹配的链接并返回结果
     /// captures: 正则表达式的捕获组
     async fn process_captures(&self, captures: &regex::Captures<'_>) -> ProcessorResultType;
-    
+
     /// 获取处理器名称
     fn name(&self) -> &'static str;
 }

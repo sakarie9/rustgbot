@@ -10,8 +10,11 @@ use url::Url;
 pub mod models;
 pub use models::*;
 
-// 默认最大文件大小：10MB
-const DEFAULT_MAX_FILE_SIZE: usize = 10 * 1024 * 1024;
+const DEFAULT_MAX_FILE_SIZE: usize = 10 * 1000 * 1000; // 默认最大文件大小：10MB
+pub const GENERAL_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36";
+pub const PIXIV_REFERER: &str = "https://www.pixiv.net/";
+pub const SUMMARY_MAX_LENGTH: usize = 600;
+pub const SUMMARY_MAX_MAX_LENGTH: usize = 800;
 
 /// 获取最大文件大小设置，支持从环境变量 MAX_FILE_SIZE 读取
 /// 环境变量值可以是字节数（如 "10485760"）或人类可读格式（如 "10MB", "1GB"）
@@ -62,10 +65,6 @@ pub fn get_max_file_size() -> usize {
     }
 }
 
-pub const GENERAL_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36";
-pub const SUMMARY_MAX_LENGTH: usize = 600;
-pub const SUMMARY_MAX_MAX_LENGTH: usize = 800;
-
 // 线程局部存储，控制是否启用文本截断
 thread_local! {
     static TRUNCATION_ENABLED: RefCell<bool> = const { RefCell::new(true) };
@@ -101,7 +100,11 @@ pub async fn download_file(url: &str) -> Result<(Vec<u8>, String)> {
 }
 
 pub async fn download_file_ua(url: &str, ua: &str) -> Result<(Vec<u8>, String)> {
-    download_file_internal(url, ua, None).await
+    download_file_internal(url, ua, None, None).await
+}
+
+pub async fn download_pixiv(url: &str) -> Result<(Vec<u8>, String)> {
+    download_file_internal(url, GENERAL_UA, Some(PIXIV_REFERER), None).await
 }
 
 // 下载 GIF 文件的辅助函数
@@ -110,7 +113,7 @@ pub async fn get_gif_bytes(url: &str) -> Result<Vec<u8>> {
 }
 
 pub async fn get_gif_bytes_ua(url: &str, ua: &str) -> Result<Vec<u8>> {
-    let (bytes, _) = download_file_internal(url, ua, Some("gif".to_string())).await?;
+    let (bytes, _) = download_file_internal(url, ua, None, Some("gif".to_string())).await?;
     Ok(bytes)
 }
 
@@ -118,12 +121,19 @@ pub async fn get_gif_bytes_ua(url: &str, ua: &str) -> Result<Vec<u8>> {
 async fn download_file_internal(
     url: &str,
     ua: &str,
+    referer: Option<&str>,
     check_image_type: Option<String>,
 ) -> Result<(Vec<u8>, String)> {
     let client = reqwest::Client::builder().user_agent(ua).build()?;
 
     // 先发送 HEAD 请求检查文件大小和类型
-    let head_response = client.head(url).send().await?;
+    let mut head_response = client.head(url);
+
+    if let Some(referer) = referer {
+        head_response = head_response.header("Referer", referer);
+    }
+
+    let head_response = head_response.send().await?;
 
     if !head_response.status().is_success() {
         return Err(anyhow!(
@@ -175,7 +185,13 @@ async fn download_file_internal(
 
     // 如果检查通过，开始实际下载
     log::debug!("Starting download from: {}", url);
-    let response = client.get(url).send().await?;
+    let mut response = client.get(url);
+
+    if let Some(referer) = referer {
+        response = response.header("Referer", referer);
+    }
+
+    let response = response.send().await?;
 
     if !response.status().is_success() {
         return Err(anyhow!("HTTP GET request failed: {}", response.status()));
@@ -195,7 +211,7 @@ async fn download_file_internal(
         ));
     }
 
-    log::debug!("Successfully downloaded {} bytes", bytes.len());
+    log::info!("Successfully downloaded {}", convert_bytes(bytes_len as f64));
     Ok((bytes.to_vec(), content_type))
 }
 
