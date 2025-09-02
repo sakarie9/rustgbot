@@ -12,3 +12,4 @@ url = { workspace = true }
 async-trait = { workspace = true }
 regex = { workspace = true }
 human_bytes = { workspace = true }
+byte-unit = { workspace = true }

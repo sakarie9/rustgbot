@@ -2,6 +2,7 @@
 //!
 //! 这个模块包含了整个workspace中可能用到的通用工具函数。
 use anyhow::{Result, anyhow};
+use byte_unit::Byte;
 use human_bytes::human_bytes;
 use std::cell::RefCell;
 use url::Url;
@@ -9,7 +10,58 @@ use url::Url;
 pub mod models;
 pub use models::*;
 
-pub const MAX_FILE_SIZE: usize = 10 * 1000 * 1000; // 10MB
+// 默认最大文件大小：10MB
+const DEFAULT_MAX_FILE_SIZE: usize = 10 * 1024 * 1024;
+
+/// 获取最大文件大小设置，支持从环境变量 MAX_FILE_SIZE 读取
+/// 环境变量值可以是字节数（如 "10485760"）或人类可读格式（如 "10MB", "1GB"）
+/// 如果无法解析则使用默认值 10MB
+pub fn get_max_file_size() -> usize {
+    match get_env_var("MAX_FILE_SIZE") {
+        Some(size_str) => {
+            // 先尝试直接解析为数字（字节数）
+            if let Ok(size) = size_str.parse::<usize>() {
+                log::debug!(
+                    "Using MAX_FILE_SIZE from environment: {} bytes ({})",
+                    size,
+                    convert_bytes(size as f64)
+                );
+                return size;
+            }
+
+            // 如果不是纯数字，尝试解析人类可读格式
+            match Byte::parse_str(&size_str, true) {
+                Ok(byte_obj) => {
+                    let size = byte_obj.as_u64() as usize;
+                    log::debug!(
+                        "Using MAX_FILE_SIZE from environment: {} -> {} bytes ({})",
+                        size_str,
+                        size,
+                        convert_bytes(size as f64)
+                    );
+                    size
+                }
+                Err(_) => {
+                    log::warn!(
+                        "Invalid MAX_FILE_SIZE environment variable: {}, using default: {} bytes",
+                        size_str,
+                        DEFAULT_MAX_FILE_SIZE
+                    );
+                    DEFAULT_MAX_FILE_SIZE
+                }
+            }
+        }
+        None => {
+            log::debug!(
+                "MAX_FILE_SIZE not set, using default: {} bytes ({})",
+                DEFAULT_MAX_FILE_SIZE,
+                convert_bytes(DEFAULT_MAX_FILE_SIZE as f64)
+            );
+            DEFAULT_MAX_FILE_SIZE
+        }
+    }
+}
+
 pub const GENERAL_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36";
 pub const SUMMARY_MAX_LENGTH: usize = 600;
 pub const SUMMARY_MAX_MAX_LENGTH: usize = 800;
@@ -87,11 +139,12 @@ async fn download_file_internal(
         {
             log::debug!("File size: {} bytes ({})", size, convert_bytes(size as f64));
 
-            if size > MAX_FILE_SIZE {
+            let max_file_size = get_max_file_size();
+            if size > max_file_size {
                 return Err(anyhow!(
                     "File too large: {} (max: {})",
                     convert_bytes(size as f64),
-                    convert_bytes(MAX_FILE_SIZE as f64)
+                    convert_bytes(max_file_size as f64)
                 ));
             }
         }
@@ -133,11 +186,12 @@ async fn download_file_internal(
     let bytes_len = bytes.len();
 
     // 再次检查实际下载的文件大小
-    if bytes_len > MAX_FILE_SIZE {
+    let max_file_size = get_max_file_size();
+    if bytes_len > max_file_size {
         return Err(anyhow!(
             "Downloaded file too large: {} (max: {})",
             convert_bytes(bytes_len as f64),
-            convert_bytes(MAX_FILE_SIZE as f64)
+            convert_bytes(max_file_size as f64)
         ));
     }
 
