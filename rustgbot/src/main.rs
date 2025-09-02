@@ -153,6 +153,7 @@ pub async fn send_bot_responses(
                     .message_id(message_id)
                     .urls(media.urls)
                     .spoiler(media.spoiler)
+                    .original_urls(media.original_urls)
                     .send_photo(bot)
                     .await
             }
@@ -185,9 +186,11 @@ fn should_skip_message(msg: &Message) -> bool {
     }
     if let Some(preview) = msg.link_preview_options() {
         // 链接存在 fixupx.com 或 fxtwitter.com 跳过
-        if preview.url.as_deref().is_some_and(|url| {
-            url.contains("fixupx.com") || url.contains("fxtwitter.com")
-        }) {
+        if preview
+            .url
+            .as_deref()
+            .is_some_and(|url| url.contains("fixupx.com") || url.contains("fxtwitter.com"))
+        {
             return true;
         }
     }

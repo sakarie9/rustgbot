@@ -51,6 +51,7 @@ pub struct MessageSenderBuilder {
     text: String,
     urls: Vec<String>,
     spoiler: bool,
+    original_urls: Option<Vec<String>>,
 }
 
 impl MessageSenderBuilder {
@@ -64,6 +65,7 @@ impl MessageSenderBuilder {
             message_id: None,
             urls: Vec::new(),
             spoiler: false,
+            original_urls: None,
         }
     }
 
@@ -89,6 +91,12 @@ impl MessageSenderBuilder {
     /// 设置是否剧透 (可选)
     pub fn spoiler(mut self, spoiler: bool) -> Self {
         self.spoiler = spoiler;
+        self
+    }
+
+    /// 设置原始URL列表，用于下载失败时的备用下载 (可选)
+    pub fn original_urls(mut self, original_urls: Option<Vec<String>>) -> Self {
+        self.original_urls = original_urls;
         self
     }
 
@@ -164,12 +172,36 @@ async fn send_single_media(msg: MessageSenderBuilder, bot: &Bot) -> Result<Messa
     }
 
     // 第二次尝试：下载文件并上传
-    let data = common::download_file(url).await;
+    // 如果有原始URL且当前URL疑似为Pixiv代理URL，则使用原始URL下载
+    let download_url = if let Some(ref original_urls) = msg.original_urls {
+        if is_pixiv_related_url(url) && !original_urls.is_empty() {
+            &original_urls[0]
+        } else {
+            url
+        }
+    } else {
+        url
+    };
+
+    let data = if is_pixiv_related_url(download_url) {
+        log::debug!("Using Pixiv-specific download for: {}", download_url);
+        common::download_pixiv(download_url).await
+    } else {
+        common::download_file(download_url).await
+    };
+
     if let Err(e) = data {
         return Err(anyhow::anyhow!("Failed to download and send media: {}", e));
     }
 
     let (file_bytes, content_type) = data.unwrap();
+
+    // 记录下载的文件大小
+    log::info!(
+        "Downloaded single file with size: {} for URL: {}",
+        convert_bytes(file_bytes.len() as f64),
+        download_url
+    );
 
     // 如果是 application/octet-stream，尝试从URL推断实际的内容类型
     let actual_content_type = match content_type.as_str() {
@@ -231,6 +263,7 @@ async fn send_photo_group(msg: MessageSenderBuilder, bot: &Bot) -> Result<Messag
                 msg.chat_id,
                 msg.message_id.unwrap_or(MessageId(0)),
                 msg.urls,
+                msg.original_urls,
                 msg.text,
                 msg.spoiler,
             )
@@ -381,6 +414,7 @@ async fn send_media_group_with_download(
     chat_id: ChatId,
     message_id: MessageId,
     media_urls: Vec<String>,
+    original_urls: Option<Vec<String>>,
     caption: String,
     spoiler: bool,
 ) -> ResponseResult<Vec<Message>> {
@@ -395,7 +429,25 @@ async fn send_media_group_with_download(
             url
         );
 
-        match common::download_file(url).await {
+        // 确定要下载的URL
+        let download_url = if let Some(ref orig_urls) = original_urls {
+            if is_pixiv_related_url(url) && index < orig_urls.len() {
+                &orig_urls[index]
+            } else {
+                url
+            }
+        } else {
+            url
+        };
+
+        let download_result = if is_pixiv_related_url(download_url) {
+            log::debug!("Using Pixiv-specific download for: {}", download_url);
+            common::download_pixiv(download_url).await
+        } else {
+            common::download_file(download_url).await
+        };
+
+        match download_result {
             Ok((file_bytes, content_type)) => {
                 log::debug!(
                     "Successfully downloaded file {}: {} bytes, content-type: {}",
@@ -417,6 +469,17 @@ async fn send_media_group_with_download(
             }
         }
     }
+
+    // 计算总文件大小并记录日志
+    let total_size: usize = downloaded_files
+        .iter()
+        .map(|(bytes, _, _, _)| bytes.len())
+        .sum();
+    log::info!(
+        "Downloaded {} files with total size: {}",
+        downloaded_files.len(),
+        convert_bytes(total_size as f64)
+    );
 
     let caption = if downloaded_files.len() != media_urls.len() {
         // 如果下载的文件数量和URL数量不一致，添加警告信息到caption
@@ -475,6 +538,22 @@ pub async fn send_reply_text(
         .reply_parameters(ReplyParameters::new(message_id))
         .parse_mode(ParseMode::Html)
         .await
+}
+
+/// 判断URL是否为Pixiv相关URL（包括代理URL和原始URL）
+fn is_pixiv_related_url(url: &str) -> bool {
+    const PIXIV_DOMAINS: &[&str] = &[
+        "pixiv.net",
+        "pximg.net",
+        processor_pixiv::constants::REVERSE_PROXY_URL,
+    ];
+
+    let from_env = common::get_env_var("PIXIV_IMAGE_PROXY");
+    let env_domain_check = from_env
+        .as_ref()
+        .is_some_and(|domain| !domain.is_empty() && url.contains(domain));
+
+    PIXIV_DOMAINS.iter().any(|domain| url.contains(domain)) || env_domain_check
 }
 
 #[cfg(test)]
