@@ -270,9 +270,12 @@ pub fn convert_bytes<T: Into<f64>>(bytes: T) -> String {
     human_bytes(bytes.into())
 }
 
-/// 从URL中提取文件名，如果无法提取则根据content-type生成默认文件名
+/// 从URL中提取文件名，优先使用content-type推断的文件扩展名，无法确定时使用URL的扩展名
 pub fn extract_filename_from_url(url: &str, content_type: &str) -> String {
     use std::path::Path;
+
+    // 获取从content-type推断的扩展名
+    let content_type_extension = get_file_extension_from_content_type(content_type);
 
     // 尝试从URL路径中提取文件名
     if let Ok(parsed_url) = url::Url::parse(url) {
@@ -282,12 +285,39 @@ pub fn extract_filename_from_url(url: &str, content_type: &str) -> String {
             && !filename_str.is_empty()
             && filename_str != "/"
         {
-            return filename_str.to_string();
+            let path_obj = Path::new(filename_str);
+            
+            // 获取文件名主体部分（不带扩展名）
+            let stem = path_obj
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("file");
+            
+            // 优先使用content-type的扩展名，如果没有则使用URL的扩展名
+            let final_extension = content_type_extension.or_else(|| {
+                path_obj.extension()
+                    .and_then(|ext| ext.to_str())
+                    .map(|ext| ext.to_string())
+            });
+            
+            match final_extension {
+                Some(ext) => format!("{}.{}", stem, ext),
+                None => stem.to_string(),
+            }
+        } else {
+            // URL无法解析文件名的情况
+            match content_type_extension {
+                Some(ext) => format!("file.{}", ext),
+                None => "file".to_string(),
+            }
+        }
+    } else {
+        // URL解析失败的情况
+        match content_type_extension {
+            Some(ext) => format!("file.{}", ext),
+            None => "file".to_string(),
         }
     }
-
-    // 如果无法从URL提取文件名，根据content-type生成默认文件名
-    get_file_extension_from_content_type(content_type)
 }
 
 /// 根据URL的文件扩展名推断Content-Type
@@ -338,40 +368,40 @@ pub fn guess_content_type_from_url(url: &str) -> Option<String> {
     None
 }
 
-/// 根据content-type获取对应的文件扩展名
-pub fn get_file_extension_from_content_type(content_type: &str) -> String {
+/// 根据content-type获取对应的文件扩展名，无法确定时返回None
+pub fn get_file_extension_from_content_type(content_type: &str) -> Option<String> {
     let extension = if content_type.starts_with("image/") {
         match content_type {
-            "image/jpeg" => "jpg",
-            "image/png" => "png",
-            "image/gif" => "gif",
-            "image/webp" => "webp",
-            _ => "jpg", // 默认图片格式
+            "image/jpeg" => Some("jpg"),
+            "image/png" => Some("png"),
+            "image/gif" => Some("gif"),
+            "image/webp" => Some("webp"),
+            _ => None, // 未知图片格式返回None
         }
     } else if content_type.starts_with("video/") {
         match content_type {
-            "video/mp4" => "mp4",
-            "video/webm" => "webm",
-            "video/avi" => "avi",
-            _ => "mp4", // 默认视频格式
+            "video/mp4" => Some("mp4"),
+            "video/webm" => Some("webm"),
+            "video/avi" => Some("avi"),
+            _ => None, // 未知视频格式返回None
         }
     } else if content_type.starts_with("audio/") {
         match content_type {
-            "audio/mpeg" => "mp3",
-            "audio/wav" => "wav",
-            "audio/ogg" => "ogg",
-            _ => "mp3", // 默认音频格式
+            "audio/mpeg" => Some("mp3"),
+            "audio/wav" => Some("wav"),
+            "audio/ogg" => Some("ogg"),
+            _ => None, // 未知音频格式返回None
         }
     } else {
         match content_type {
-            "application/pdf" => "pdf",
-            "application/zip" => "zip",
-            "text/plain" => "txt",
-            _ => "bin",
+            "application/pdf" => Some("pdf"),
+            "application/zip" => Some("zip"),
+            "text/plain" => Some("txt"),
+            _ => None, // 未知格式返回None
         }
     };
 
-    format!("file.{}", extension)
+    extension.map(|ext| ext.to_string())
 }
 
 #[cfg(test)]
@@ -421,6 +451,57 @@ mod tests {
             let result = join_url(base, path).unwrap();
             assert_eq!(result, expected);
             println!("✓ Base: {} + Path: {} = {}", base, path, result);
+        }
+    }
+
+    #[test]
+    fn test_extract_filename_from_url() {
+        let test_cases = vec![
+            // 正常情况，提取文件名并使用正确的扩展名
+            ("https://example.com/image.png", "image/jpeg", "image.jpg"),
+            ("https://example.com/video.avi", "video/mp4", "video.mp4"),
+            ("https://example.com/document.txt", "application/pdf", "document.pdf"),
+            
+            // URL没有扩展名的情况
+            ("https://example.com/image", "image/png", "image.png"),
+            
+            // URL无法解析文件名的情况
+            ("https://example.com/", "image/gif", "file.gif"),
+            ("https://example.com", "video/mp4", "file.mp4"),
+            
+            // 未知content-type的情况，应该使用URL的扩展名
+            ("https://example.com/document.xyz", "application/unknown", "document.xyz"),
+            ("https://example.com/image.png", "image/unknown", "image.png"),
+            ("https://example.com/", "application/unknown", "file"),
+        ];
+
+        for (url, content_type, expected) in test_cases {
+            let result = extract_filename_from_url(url, content_type);
+            assert_eq!(result, expected, "Failed for URL: {} with content-type: {}", url, content_type);
+        }
+    }
+
+    #[test]
+    fn test_get_file_extension_from_content_type() {
+        let test_cases = vec![
+            // 已知格式
+            ("image/jpeg", Some("jpg")),
+            ("image/png", Some("png")),
+            ("video/mp4", Some("mp4")),
+            ("audio/mpeg", Some("mp3")),
+            ("application/pdf", Some("pdf")),
+            
+            // 未知格式应该返回None
+            ("image/unknown", None),
+            ("video/unknown", None),
+            ("audio/unknown", None),
+            ("application/unknown", None),
+            ("text/unknown", None),
+        ];
+
+        for (content_type, expected) in test_cases {
+            let result = get_file_extension_from_content_type(content_type);
+            assert_eq!(result, expected.map(|s| s.to_string()), "Failed for content-type: {}", content_type);
         }
     }
 }

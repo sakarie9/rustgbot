@@ -308,7 +308,7 @@ async fn send_media_by_content_type(
 
     match content_type {
         // 图片类型
-        ct if ct.starts_with("image/gif") => {
+        "image/gif" => {
             bot.send_animation(chat_id, input_file)
                 .reply_parameters(reply_params)
                 .parse_mode(ParseMode::Html)
