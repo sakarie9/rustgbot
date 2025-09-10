@@ -22,7 +22,7 @@ reqwest = { version = "0.12.23", default-features = false, features = [
 ] }
 
 # Logging
-log = "0.4.27"
+log = "0.4.28"
 env_logger = "0.11.8"
 
 # Error handling
