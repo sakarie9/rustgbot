@@ -79,4 +79,3 @@ Bot 会自动监听群组和私聊中的消息，当检测到支持的链接时�
 | `NGA_CID` | NGA Cookie CID，用于游客不可见的帖子的访问 | ❌ |
 | `PIXIV_COOKIE` | 填写 Cookie 中 `PHPSESSID` 的值，格式为 `1234567_aaaaaaaaaaaaaaaaaaaaa`。没有有效的 Cookie 将无法获取受限制的图片 | ❌ |
 | `PIXIV_IMAGE_PROXY` | 用于 Pixiv 图片防盗链的代理，默认为 `https://i.pixiv.re/` | ❌ |
-| `MAX_FILE_SIZE` | 最大下载/上传文件大小，默认 `10MB`。格式可以为 `500KB` `30MiB` 等 | ❌ |

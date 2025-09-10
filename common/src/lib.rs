@@ -19,6 +19,9 @@ pub const SUMMARY_MAX_MAX_LENGTH: usize = 800;
 /// 获取最大文件大小设置，支持从环境变量 MAX_FILE_SIZE 读取
 /// 环境变量值可以是字节数（如 "10485760"）或人类可读格式（如 "10MB", "1GB"）
 /// 如果无法解析则使用默认值 10MB
+/// 
+/// https://core.telegram.org/bots/api#sendphoto
+/// The photo must be at most 10 MB in size. 
 pub fn get_max_file_size() -> usize {
     match get_env_var("MAX_FILE_SIZE") {
         Some(size_str) => {
