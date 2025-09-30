@@ -115,29 +115,51 @@ pub fn get_nga_cookie() -> String {
 // ==== URL 处理 ====
 
 /// 当链接参数同时存在pid和opt时，删除opt参数
+/// 删除可能存在的page参数
 pub fn preprocess_url(url: &str) -> String {
     // 解析URL
     if let Ok(mut parsed_url) = url::Url::parse(url) {
-        let query_pairs: Vec<(String, String)> = parsed_url
+        let mut has_pid = false;
+        let mut has_opt = false;
+        let mut has_page = false;
+        let mut needs_rebuild = false;
+        
+        // 在一次循环中检查参数并过滤
+        let filtered_pairs: Vec<(String, String)> = parsed_url
             .query_pairs()
-            .map(|(k, v)| (k.into_owned(), v.into_owned()))
+            .filter_map(|(k, v)| {
+                let key = k.as_ref();
+                // 检查是否存在 pid、opt 和 page
+                if key == "pid" {
+                    has_pid = true;
+                }
+                if key == "opt" {
+                    has_opt = true;
+                }
+                if key == "page" {
+                    has_page = true;
+                }
+                
+                // page 参数总是删除
+                if key == "page" {
+                    needs_rebuild = true;
+                    return None;
+                }
+                
+                // 当同时存在 pid 和 opt 时，删除 opt
+                if key == "opt" && has_pid {
+                    needs_rebuild = true;
+                    return None;
+                }
+                
+                Some((k.into_owned(), v.into_owned()))
+            })
             .collect();
 
-        // 检查是否同时存在 pid 和 opt 参数
-        let has_pid = query_pairs.iter().any(|(k, _)| k == "pid");
-        let has_opt = query_pairs.iter().any(|(k, _)| k == "opt");
-
-        if has_pid && has_opt {
-            // 重建查询字符串，排除 opt 参数
-            let filtered_pairs: Vec<(String, String)> = query_pairs
-                .into_iter()
-                .filter(|(k, _)| k != "opt")
-                .collect();
-
-            // 清空原有查询参数
+        // 如果需要重建URL（page存在 或 pid和opt同时存在）
+        if needs_rebuild || (has_pid && has_opt) {
             parsed_url.set_query(None);
-
-            // 重新添加过滤后的参数
+            
             if !filtered_pairs.is_empty() {
                 let query_string = filtered_pairs
                     .iter()
