@@ -271,6 +271,7 @@ enum BBCodeTag {
     TableCell(Option<String>), // 表格单元格标签，可能有宽度参数如td40
     Pid(Option<String>),       // pid标签，可能有参数，用于回复帖子中的 Quote 清理
     Uid(Option<String>),       // uid标签，可能有参数，用于回复帖子中的 Quote 清理
+    Flash,                     // flash标签，用于嵌入Flash内容
 }
 
 impl BBCodeTag {
@@ -290,6 +291,7 @@ impl BBCodeTag {
             "td" => Some(BBCodeTag::TableCell(None)),
             "pid" => Some(BBCodeTag::Pid(None)),
             "uid" => Some(BBCodeTag::Uid(None)),
+            "flash" => Some(BBCodeTag::Flash),
             _ => {
                 if tag.starts_with("url=") {
                     // 处理带参数的URL标签，如 [url=https://x.com]
@@ -349,6 +351,7 @@ impl BBCodeTag {
             BBCodeTag::TableCell(_) => "".to_string(),
             BBCodeTag::Pid(_) => "".to_string(), // pid标签被移除，只保留内容
             BBCodeTag::Uid(_) => "".to_string(), // uid标签被移除，只保留内容
+            BBCodeTag::Flash => "".to_string(),  // flash标签被移除，只保留内容
         }
     }
 
@@ -375,6 +378,7 @@ impl BBCodeTag {
             BBCodeTag::TableCell(_) => " │ ".to_string(),
             BBCodeTag::Pid(_) => "".to_string(), // pid标签被移除，只保留内容
             BBCodeTag::Uid(_) => "".to_string(), // uid标签被移除，只保留内容
+            BBCodeTag::Flash => "".to_string(),  // flash标签被移除，只保留内容
         }
     }
 
@@ -626,6 +630,7 @@ impl BBCodeParser {
             BBCodeTag::TableCell(_) => "td".to_string(),
             BBCodeTag::Pid(_) => "pid".to_string(),
             BBCodeTag::Uid(_) => "uid".to_string(),
+            BBCodeTag::Flash => "flash".to_string(),
         }
     }
 

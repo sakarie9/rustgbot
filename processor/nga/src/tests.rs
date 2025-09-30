@@ -244,6 +244,27 @@ mod nga_tests {
     }
 
     #[test]
+    fn test_bbcode_parser_flash() {
+        // 测试 flash 标签（应该被移除，只保留内容）
+        let input = "[flash]https://www.bilibili.com/video/test[/flash]";
+        let mut parser = BBCodeParser::new(input);
+        let result = parser.parse();
+        assert_eq!(result, "https://www.bilibili.com/video/test");
+
+        // 测试带其他内容的 flash 标签
+        let input = "查看视频: [flash]https://www.bilibili.com/video/BV123456[/flash] 精彩内容";
+        let mut parser = BBCodeParser::new(input);
+        let result = parser.parse();
+        assert_eq!(result, "查看视频: https://www.bilibili.com/video/BV123456 精彩内容");
+
+        // 测试嵌套中的 flash 标签
+        let input = "[b]粗体[flash]https://example.com/video[/flash]继续粗体[/b]";
+        let mut parser = BBCodeParser::new(input);
+        let result = parser.parse();
+        assert_eq!(result, "<b>粗体https://example.com/video继续粗体</b>");
+    }
+
+    #[test]
     fn test_clean_body_integration_with_nesting() {
         // 测试完整的清理流程，包含嵌套标签
         let input = "&lt;b&gt;[b]粗体[i]斜体[/i]文本[/b] [img]test.jpg[/img] [url]https://example.com[/url]\n\n\n\n新行";
