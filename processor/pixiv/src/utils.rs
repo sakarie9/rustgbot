@@ -97,6 +97,7 @@ pub fn build_pixiv_caption(body: &PixivIllustBody) -> Result<String> {
     Ok(text)
 }
 
+// Build real image URLs directly from the first page URL and total page count
 // https://i.pixiv.net/img-original/img/2024/11/30/00/00/47/124748386_p0.png
 // https://i.pixiv.net/img-original/img/2024/11/30/00/00/47/124748386_p1.png
 pub fn get_urls_from_count(url: &str, count: u32) -> Vec<String> {

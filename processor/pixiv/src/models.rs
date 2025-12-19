@@ -38,5 +38,6 @@ pub struct PixivTag {
 
 #[derive(Debug, Deserialize)]
 pub struct PixivUrls {
-    pub original: Option<String>,
+    pub regular: Option<String>,
+    // pub original: Option<String>,
 }

@@ -33,9 +33,10 @@ async fn get_pixiv_image(id: &str) -> Result<ProcessorResultMedia> {
     let text = build_pixiv_caption(&body)?;
 
     // 处理图片URL
-    let Some(url) = body.urls.original.as_ref() else {
+    // HACK: Use regular quality instead of original to avoid telegram limit
+    let Some(url) = body.urls.regular.as_ref() else {
         // 空图片URL，返回文本结果
-        log::error!("No original image URL found for Pixiv ID: {}", id);
+        log::error!("No regular image URL found for Pixiv ID: {}", id);
         return Ok(ProcessorResultMedia {
             caption: text,
             urls: Vec::new(),
@@ -44,7 +45,7 @@ async fn get_pixiv_image(id: &str) -> Result<ProcessorResultMedia> {
         });
     };
 
-    let original_urls = if body.page_count > 1 {
+    let image_urls = if body.page_count > 1 {
         get_urls_from_count(url, body.page_count)
     } else {
         vec![url.to_string()]
@@ -55,8 +56,8 @@ async fn get_pixiv_image(id: &str) -> Result<ProcessorResultMedia> {
 
     Ok(ProcessorResultMedia {
         caption: text,
-        urls: original_urls.clone(),        // 这里会在后续被代理URL替换
+        urls: image_urls.clone(),        // 这里会在后续被代理URL替换
         spoiler: is_restrict,               // 如果是限制内容，设置 spoiler 为 true
-        original_urls: Some(original_urls), // 保存原始URL用于下载
+        original_urls: Some(image_urls), // 保存原始URL用于下载
     })
 }
