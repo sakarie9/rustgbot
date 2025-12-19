@@ -14,29 +14,16 @@ before:
     - cargo fetch --locked
 
 builds:
-  - id: linux-amd64-gnu
+  - id: linux-gnu
     builder: rust
+    # tool: "cargo"
+    # command: "build"
+    flags:
+      - --release
+      - -p=rustgbot
     targets:
       - x86_64-unknown-linux-gnu
-    flags:
-      - --release
-      - -p=rustgbot
-  - id: linux-arm64-gnu
-    builder: rust
-    targets:
       - aarch64-unknown-linux-gnu
-    flags:
-      - --release
-      - -p=rustgbot
-  # - id: windows-amd64-gnu
-  #   builder: rust
-  #   # tool: cross
-  #   # command: build
-  #   targets:
-  #     - x86_64-pc-windows-gnu
-  #   flags:
-  #     - --release
-  #     - -p=rustgbot
 
 # Creates archives for each target.
 archives:
@@ -67,46 +54,24 @@ changelog:
       - "^build:"
 
 ##DOCKER_START##
-dockers:
-  - image_templates:
-      - "ghcr.io/sakarie9/rustgbot:{{ .Tag }}-arm64"
+dockers_v2:
+  - images:
+      - "ghcr.io/sakarie9/rustgbot"
     dockerfile: Dockerfile
-    goarch: arm64
     # ids:
-    #   - linux-arm64-musl
-    use: buildx
-    build_flag_templates:
-      - "--pull"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.name={{.ProjectName}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.source={{.GitURL}}"
-      - "--platform=linux/arm64"
-  - image_templates:
-      - "ghcr.io/sakarie9/rustgbot:{{ .Tag }}-amd64"
-    dockerfile: Dockerfile
-    goarch: amd64
-    # ids:
-    #   - linux-amd64-musl
-    use: buildx
-    build_flag_templates:
-      - "--pull"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.name={{.ProjectName}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.source={{.GitURL}}"
-      - "--platform=linux/amd64"
-
-# Here we join both images into a Docker manifest.
-docker_manifests:
-  - name_template: "ghcr.io/sakarie9/rustgbot:{{ .Tag }}"
-    image_templates:
-      - "ghcr.io/sakarie9/rustgbot:{{ .Tag }}-arm64"
-      - "ghcr.io/sakarie9/rustgbot:{{ .Tag }}-amd64"
-  - name_template: "ghcr.io/sakarie9/rustgbot:latest"
-    image_templates:
-      - "ghcr.io/sakarie9/rustgbot:{{ .Tag }}-arm64"
-      - "ghcr.io/sakarie9/rustgbot:{{ .Tag }}-amd64"
+    #   - linux-amd64-gnu
+    #   - linux-arm64-gnu
+    # platforms:
+    #   - linux/amd64
+    #   - linux/arm64
+    tags:
+      - "v{{ .Version }}"
+      - "{{ if .IsNightly }}nightly{{ end }}"
+      - "{{ if not .IsNightly }}latest{{ end }}"
+    labels:
+      "org.opencontainers.image.created": "{{.Date}}"
+      "org.opencontainers.image.name": "{{.ProjectName}}"
+      "org.opencontainers.image.revision": "{{.FullCommit}}"
+      "org.opencontainers.image.version": "{{.Version}}"
+      "org.opencontainers.image.source": "{{.GitURL}}"
 ##DOCKER_END##
