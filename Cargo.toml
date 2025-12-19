@@ -8,7 +8,7 @@ resolver = "2"
 
 [workspace.dependencies]
 # Core async runtime
-tokio = { version = "1.47.1", default-features = false, features = [
+tokio = { version = "1.48.0", default-features = false, features = [
     "macros",
     "rt-multi-thread",
 ] }
@@ -16,24 +16,24 @@ tokio = { version = "1.47.1", default-features = false, features = [
 async-trait = "0.1.89"
 
 # HTTP client
-reqwest = { version = "0.12.23", default-features = false, features = [
+reqwest = { version = "0.12.26", default-features = false, features = [
     "rustls-tls",
     "charset",
 ] }
 
 # Logging
-log = "0.4.28"
+log = "0.4.29"
 env_logger = "0.11.8"
 
 # Error handling
 anyhow = "1.0.100"
 
 # Text processing
-regex = "1.11.3"
-scraper = "0.24.0"
+regex = "1.12.2"
+scraper = "0.25.0"
 tabled = "0.20.0"
 human_bytes = { version = "0.4.3", default-features = false }
-byte-unit = "5.1.6"
+byte-unit = "5.2.0"
 
 # Serialization
 serde = { version = "1.0.228", features = ["derive"] }
