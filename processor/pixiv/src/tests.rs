@@ -133,7 +133,7 @@ mod pixiv_tests {
             user_name: "测试作者".to_string(),
             description: "<p>这是一个测试<br>描述</p>".to_string(),
             page_count: 1,
-            urls: PixivUrls { original: None },
+            urls: PixivUrls::default(),
             tags: Some(PixivTags {
                 tags: vec![
                     PixivTag {
@@ -166,7 +166,7 @@ mod pixiv_tests {
             user_name: "简单作者".to_string(),
             description: "".to_string(), // 空描述
             page_count: 1,
-            urls: PixivUrls { original: None },
+            urls: PixivUrls::default(),
             tags: None, // 无标签
             x_restrict: 0,
         };
@@ -187,7 +187,7 @@ mod pixiv_tests {
             user_name: "作者名".to_string(),
             description: "有描述但无标签".to_string(),
             page_count: 1,
-            urls: PixivUrls { original: None },
+            urls: PixivUrls::default(),
             tags: Some(PixivTags { tags: vec![] }), // 空标签列表
             x_restrict: 0,
         };

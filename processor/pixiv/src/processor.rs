@@ -58,6 +58,6 @@ async fn get_pixiv_image(id: &str) -> Result<ProcessorResultMedia> {
         caption: text,
         urls: image_urls.clone(),        // 这里会在后续被代理URL替换
         spoiler: is_restrict,               // 如果是限制内容，设置 spoiler 为 true
-        original_urls: Some(image_urls), // 保存原始URL用于下载
+        original_urls: Some(image_urls), // 保存URL用于下载
     })
 }
