@@ -23,3 +23,4 @@ target/
 dist
 target
 target_rcargo
+.zig-cache/
