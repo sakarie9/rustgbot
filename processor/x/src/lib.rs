@@ -9,7 +9,7 @@ pub struct XLinkProcessor;
 
 impl XLinkProcessor {
     const PATTERN: &'static str =
-        r"(?:https?://)?\b(?:x\.com|(?:www\.)?twitter\.com)/(\w+)/status/(\d+)";
+        r"(?:https?://)?\b(?:x\.com|(?:www\.|vx)?twitter\.com)/(\w+)/status/(\d+)";
 }
 
 #[async_trait::async_trait]
