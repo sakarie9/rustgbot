@@ -255,7 +255,10 @@ mod nga_tests {
         let input = "查看视频: [flash]https://www.bilibili.com/video/BV123456[/flash] 精彩内容";
         let mut parser = BBCodeParser::new(input);
         let result = parser.parse();
-        assert_eq!(result, "查看视频: https://www.bilibili.com/video/BV123456 精彩内容");
+        assert_eq!(
+            result,
+            "查看视频: https://www.bilibili.com/video/BV123456 精彩内容"
+        );
 
         // 测试嵌套中的 flash 标签
         let input = "[b]粗体[flash]https://example.com/video[/flash]继续粗体[/b]";
@@ -273,7 +276,8 @@ mod nga_tests {
 
         // 测试包含所有类型标签的复杂示例，包括嵌套
         let complex_input = "[quote][b]粗体引用[i]斜体[/i][/b][/quote] &quot;文本&quot; [img]image.png[/img]\n\n\n\n新行";
-        let complex_expected = "<blockquote><b>粗体引用<i>斜体</i></b></blockquote> \"文本\" \n\n新行";
+        let complex_expected =
+            "<blockquote><b>粗体引用<i>斜体</i></b></blockquote> \"文本\" \n\n新行";
         assert_eq!(clean_body(complex_input), complex_expected);
     }
 
@@ -286,7 +290,8 @@ mod nga_tests {
 
         // 测试包含所有类型标签的复杂示例，包括嵌套
         let complex_input = "[quote][b]粗体引用[i]斜体[/i][/b][/quote] &quot;文本&quot; [img]image.png[/img]\n\n\n\n新行";
-        let complex_expected = "<blockquote><b>粗体引用<i>斜体</i></b></blockquote> \"文本\" \n\n新行";
+        let complex_expected =
+            "<blockquote><b>粗体引用<i>斜体</i></b></blockquote> \"文本\" \n\n新行";
         assert_eq!(clean_body(complex_input), complex_expected);
 
         // 测试表情标签
@@ -704,10 +709,10 @@ mod nga_tests {
         let input_with_title = "[collapse=详细内容]这是折叠的内容[/collapse]";
         let mut parser = BBCodeParser::new(input_with_title);
         let result = parser.parse();
-        
+
         println!("带标题的collapse输入: {}", input_with_title);
         println!("带标题的collapse结果: {}", result);
-        
+
         assert!(result.contains("[详细内容]"));
         assert!(result.contains("这是折叠的内容"));
         assert!(result.contains("[/详细内容]"));
@@ -716,10 +721,60 @@ mod nga_tests {
         let input_without_title = "[collapse]这是折叠的内容[/collapse]";
         let mut parser2 = BBCodeParser::new(input_without_title);
         let result2 = parser2.parse();
-        
+
         println!("无标题的collapse输入: {}", input_without_title);
         println!("无标题的collapse结果: {}", result2);
-        
+
         assert!(result2.contains("这是折叠的内容"));
+    }
+
+    #[test]
+    fn test_html_escape() {
+        // 测试escape_html函数
+        let test_cases = vec![
+            ("<text>", "&lt;text&gt;"),
+            ("a < b", "a &lt; b"),
+            ("a > b", "a &gt; b"),
+            ("a & b", "a &amp; b"),
+            (
+                "<script>alert('xss')</script>",
+                "&lt;script&gt;alert('xss')&lt;/script&gt;",
+            ),
+            ("normal text", "normal text"),
+            (
+                "<a>test</a> & <b>data</b>",
+                "&lt;a&gt;test&lt;/a&gt; &amp; &lt;b&gt;data&lt;/b&gt;",
+            ),
+        ];
+
+        for (input, expected) in test_cases {
+            let result = escape_html(input);
+            assert_eq!(result, expected, "Failed for input: {}", input);
+        }
+    }
+
+    #[test]
+    fn test_get_summary_with_html_chars() {
+        // 测试标题和内容包含HTML特殊字符时的处理
+        let page = NGAPage {
+            url: "https://bbs.nga.cn/test".to_string(),
+            title: "测试标题 <text> 包含尖括号".to_string(),
+            content: "内容中也有 <div> 和 & 符号".to_string(),
+            images: vec![],
+        };
+
+        let summary = get_summary(&page);
+
+        println!("Summary with HTML chars: {}", summary);
+
+        // 验证标题中的尖括号被转义
+        assert!(summary.contains("&lt;text&gt;"));
+        // 验证内容中的尖括号被转义
+        assert!(summary.contains("&lt;div&gt;"));
+        // 验证&符号被转义
+        assert!(summary.contains("&amp;"));
+        // 验证不包含未转义的尖括号（除了合法的HTML标签如<b>, <a>等）
+        assert!(!summary.contains("<text>"));
+        assert!(!summary.contains("<div>"));
     }
 }

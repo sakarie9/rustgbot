@@ -128,13 +128,23 @@ impl NGAFetcher {
     }
 }
 
+/// 转义HTML特殊字符，防止Telegram将文本内容识别为HTML标签
+fn escape_html(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
 fn get_summary(page: &NGAPage) -> String {
+    // 转义标题中的HTML特殊字符
+    let escaped_title = escape_html(page.title.trim());
     let title = format!(
         "<b><u><a href=\"{}\">{}</a></u></b>",
-        page.url,
-        page.title.trim()
+        page.url, escaped_title
     );
-    let truncated_content = substring_desc(&page.content);
+    // 转义内容中的HTML特殊字符
+    let escaped_content = escape_html(&page.content);
+    let truncated_content = substring_desc(&escaped_content);
 
     let summary = format!("{}\n\n{}", title, truncated_content);
 
