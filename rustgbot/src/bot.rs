@@ -209,6 +209,13 @@ async fn send_single_media(msg: MessageSenderBuilder, bot: &Bot) -> Result<Messa
         _ => content_type,
     };
 
+    // 如果是图片，验证尺寸
+    if actual_content_type.starts_with("image/")
+        && let Err(e) = common::validate_image_dimensions(&file_bytes)
+    {
+        return Err(anyhow::anyhow!("Image has invalid dimensions: {}", e));
+    }
+
     // 使用统一的发送函数
     send_file_upload(
         bot,
@@ -455,6 +462,19 @@ async fn send_media_group_with_download(
                     file_bytes.len(),
                     content_type
                 );
+
+                // 如果是图片，验证尺寸
+                if content_type.starts_with("image/") {
+                    match common::validate_image_dimensions(&file_bytes) {
+                        Ok(_) => {
+                            log::debug!("Image dimensions valid for: {}", url);
+                        }
+                        Err(e) => {
+                            log::warn!("Skipping image with invalid dimensions: {} - {}", url, e);
+                            continue; // 跳过这个图片
+                        }
+                    }
+                }
 
                 // 提取文件名
                 let file_name = extract_filename_from_url(url, &content_type);

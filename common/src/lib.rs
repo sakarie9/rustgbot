@@ -19,9 +19,9 @@ pub const SUMMARY_MAX_MAX_LENGTH: usize = 800;
 /// 获取最大文件大小设置，支持从环境变量 MAX_FILE_SIZE 读取
 /// 环境变量值可以是字节数（如 "10485760"）或人类可读格式（如 "10MB", "1GB"）
 /// 如果无法解析则使用默认值 10MB
-/// 
+///
 /// https://core.telegram.org/bots/api#sendphoto
-/// The photo must be at most 10 MB in size. 
+/// The photo must be at most 10 MB in size.
 pub fn get_max_file_size() -> usize {
     match get_env_var("MAX_FILE_SIZE") {
         Some(size_str) => {
@@ -214,7 +214,10 @@ async fn download_file_internal(
         ));
     }
 
-    log::info!("Successfully downloaded {}", convert_bytes(bytes_len as f64));
+    log::info!(
+        "Successfully downloaded {}",
+        convert_bytes(bytes_len as f64)
+    );
     Ok((bytes.to_vec(), content_type))
 }
 
@@ -286,20 +289,21 @@ pub fn extract_filename_from_url(url: &str, content_type: &str) -> String {
             && filename_str != "/"
         {
             let path_obj = Path::new(filename_str);
-            
+
             // 获取文件名主体部分（不带扩展名）
             let stem = path_obj
                 .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or("file");
-            
+
             // 优先使用content-type的扩展名，如果没有则使用URL的扩展名
             let final_extension = content_type_extension.or_else(|| {
-                path_obj.extension()
+                path_obj
+                    .extension()
                     .and_then(|ext| ext.to_str())
                     .map(|ext| ext.to_string())
             });
-            
+
             match final_extension {
                 Some(ext) => format!("{}.{}", stem, ext),
                 None => stem.to_string(),
@@ -404,6 +408,59 @@ pub fn get_file_extension_from_content_type(content_type: &str) -> Option<String
     extension.map(|ext| ext.to_string())
 }
 
+/// 验证图片尺寸是否符合Telegram的要求
+///
+/// Telegram对图片的要求：
+/// - 宽度和高度的总和不能超过10000
+/// - 宽高比不能超过20:1
+/// - 宽度和高度都必须大于0
+///
+/// 返回: Ok(()) 如果图片尺寸有效，Err(String) 如果无效
+pub fn validate_image_dimensions(image_data: &[u8]) -> Result<()> {
+    match imagesize::blob_size(image_data) {
+        Ok(size) => {
+            let width = size.width;
+            let height = size.height;
+
+            log::debug!("Image dimensions: {}x{}", width, height);
+
+            // 检查尺寸是否为0
+            if width == 0 || height == 0 {
+                return Err(anyhow!("Invalid image dimensions: {}x{}", width, height));
+            }
+
+            // 检查宽度+高度的总和
+            if width + height > 10000 {
+                return Err(anyhow!(
+                    "Image dimensions too large: {}x{} (sum {} exceeds 10000)",
+                    width,
+                    height,
+                    width + height
+                ));
+            }
+
+            // 检查宽高比
+            let ratio = if width > height {
+                width as f64 / height as f64
+            } else {
+                height as f64 / width as f64
+            };
+
+            if ratio > 20.0 {
+                return Err(anyhow!(
+                    "Image aspect ratio too extreme: {}x{} (ratio {:.2} exceeds 20)",
+                    width,
+                    height,
+                    ratio
+                ));
+            }
+
+            Ok(())
+        }
+        Err(e) => Err(anyhow!("Failed to read image dimensions: {}", e)),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -460,24 +517,37 @@ mod tests {
             // 正常情况，提取文件名并使用正确的扩展名
             ("https://example.com/image.png", "image/jpeg", "image.jpg"),
             ("https://example.com/video.avi", "video/mp4", "video.mp4"),
-            ("https://example.com/document.txt", "application/pdf", "document.pdf"),
-            
+            (
+                "https://example.com/document.txt",
+                "application/pdf",
+                "document.pdf",
+            ),
             // URL没有扩展名的情况
             ("https://example.com/image", "image/png", "image.png"),
-            
             // URL无法解析文件名的情况
             ("https://example.com/", "image/gif", "file.gif"),
             ("https://example.com", "video/mp4", "file.mp4"),
-            
             // 未知content-type的情况，应该使用URL的扩展名
-            ("https://example.com/document.xyz", "application/unknown", "document.xyz"),
-            ("https://example.com/image.png", "image/unknown", "image.png"),
+            (
+                "https://example.com/document.xyz",
+                "application/unknown",
+                "document.xyz",
+            ),
+            (
+                "https://example.com/image.png",
+                "image/unknown",
+                "image.png",
+            ),
             ("https://example.com/", "application/unknown", "file"),
         ];
 
         for (url, content_type, expected) in test_cases {
             let result = extract_filename_from_url(url, content_type);
-            assert_eq!(result, expected, "Failed for URL: {} with content-type: {}", url, content_type);
+            assert_eq!(
+                result, expected,
+                "Failed for URL: {} with content-type: {}",
+                url, content_type
+            );
         }
     }
 
@@ -490,7 +560,6 @@ mod tests {
             ("video/mp4", Some("mp4")),
             ("audio/mpeg", Some("mp3")),
             ("application/pdf", Some("pdf")),
-            
             // 未知格式应该返回None
             ("image/unknown", None),
             ("video/unknown", None),
@@ -501,7 +570,30 @@ mod tests {
 
         for (content_type, expected) in test_cases {
             let result = get_file_extension_from_content_type(content_type);
-            assert_eq!(result, expected.map(|s| s.to_string()), "Failed for content-type: {}", content_type);
+            assert_eq!(
+                result,
+                expected.map(|s| s.to_string()),
+                "Failed for content-type: {}",
+                content_type
+            );
         }
+    }
+
+    #[test]
+    fn test_validate_image_dimensions() {
+        // 创建一个简单的1x1 PNG图片数据 (最小的有效PNG)
+        let valid_png: Vec<u8> = vec![
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // PNG signature
+            0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, // IHDR chunk
+            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, // width=1, height=1
+            0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53, 0xDE,
+        ];
+
+        // 测试有效图片
+        assert!(validate_image_dimensions(&valid_png).is_ok());
+
+        // 测试无效数据
+        let invalid_data = vec![0x00, 0x01, 0x02];
+        assert!(validate_image_dimensions(&invalid_data).is_err());
     }
 }
