@@ -5,6 +5,13 @@ use url::Url;
 use crate::constants::REVERSE_PROXY_URL;
 use crate::models::PixivIllustBody;
 
+/// 转义HTML特殊字符，防止Telegram将文本内容识别为HTML标签
+fn escape_html(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
 /// 获取反向代理URL
 fn get_reverse_proxy_url() -> Result<String> {
     let url = get_env_var("PIXIV_IMAGE_PROXY").unwrap_or_else(|| {
@@ -40,6 +47,10 @@ pub fn convert_to_proxy_url(original_url: &str) -> Result<String> {
 
 /// 构建Pixiv作品的标题文本
 pub fn build_pixiv_caption(body: &PixivIllustBody) -> Result<String> {
+    // 转义标题和作者名，防止HTML字符导致发送失败
+    let escaped_title = escape_html(&body.title);
+    let escaped_user_name = escape_html(&body.user_name);
+    
     // 构建描述文本，清理HTML标签
     let description_text = if body.description.is_empty() {
         None
@@ -49,7 +60,8 @@ pub fn build_pixiv_caption(body: &PixivIllustBody) -> Result<String> {
             .replace("<br>", "\n")
             .replace("<br/>", "\n")
             .replace("<br />", "\n");
-        Some(cleaned_desc)
+        // 转义描述中的HTML特殊字符
+        Some(escape_html(&cleaned_desc))
     };
 
     // 处理tags
@@ -63,7 +75,8 @@ pub fn build_pixiv_caption(body: &PixivIllustBody) -> Result<String> {
                 } else {
                     t.tag.clone()
                 };
-                format!("#{}", processed_tag)
+                // 转义tag中的特殊字符
+                format!("#{}", escape_html(&processed_tag))
             })
             .collect();
         if !tag_names.is_empty() {
@@ -79,9 +92,9 @@ pub fn build_pixiv_caption(body: &PixivIllustBody) -> Result<String> {
     let mut text = format!(
         "<b><u><a href=\"{}\">{}</a></u></b> / <b><u><a href=\"{}\">{}</a></u></b>",
         join_url("https://www.pixiv.net/artworks/", &body.id)?,
-        body.title,
+        escaped_title,
         join_url("https://www.pixiv.net/users/", &body.user_id)?,
-        body.user_name
+        escaped_user_name
     );
 
     if let Some(desc) = &description_text {
