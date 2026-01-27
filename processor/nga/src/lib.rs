@@ -272,6 +272,8 @@ enum BBCodeTag {
     Pid(Option<String>),       // pid标签，可能有参数，用于回复帖子中的 Quote 清理
     Uid(Option<String>),       // uid标签，可能有参数，用于回复帖子中的 Quote 清理
     Flash,                     // flash标签，用于嵌入Flash内容
+    Color(Option<String>),     // color标签，可能有颜色参数
+    Dice,                      // dice标签，用于骰子
 }
 
 impl BBCodeTag {
@@ -292,6 +294,8 @@ impl BBCodeTag {
             "pid" => Some(BBCodeTag::Pid(None)),
             "uid" => Some(BBCodeTag::Uid(None)),
             "flash" => Some(BBCodeTag::Flash),
+            "color" => Some(BBCodeTag::Color(None)),
+            "dice" => Some(BBCodeTag::Dice),
             _ => {
                 if tag.starts_with("url=") {
                     // 处理带参数的URL标签，如 [url=https://x.com]
@@ -312,6 +316,10 @@ impl BBCodeTag {
                     // 处理带参数的uid标签，如 [uid=12345678]
                     let params = tag.strip_prefix("uid=").unwrap_or("").to_string();
                     Some(BBCodeTag::Uid(Some(params)))
+                } else if tag.starts_with("color=") {
+                    // 处理带参数的color标签，如 [color=crimson]
+                    let color = tag.strip_prefix("color=").unwrap_or("").to_string();
+                    Some(BBCodeTag::Color(Some(color)))
                 } else if tag.starts_with("s:ac:") || tag.starts_with("s:") {
                     // 表情标签，如 s:ac:赞同, s:ac:cry 等
                     Some(BBCodeTag::Sticker(tag.to_string()))
@@ -352,6 +360,8 @@ impl BBCodeTag {
             BBCodeTag::Pid(_) => "".to_string(), // pid标签被移除，只保留内容
             BBCodeTag::Uid(_) => "".to_string(), // uid标签被移除，只保留内容
             BBCodeTag::Flash => "".to_string(),  // flash标签被移除，只保留内容
+            BBCodeTag::Color(_) => "".to_string(), // color标签被移除，只保留内容
+            BBCodeTag::Dice => "🎲 ".to_string(), // dice标签转换为骰子emoji
         }
     }
 
@@ -379,6 +389,8 @@ impl BBCodeTag {
             BBCodeTag::Pid(_) => "".to_string(), // pid标签被移除，只保留内容
             BBCodeTag::Uid(_) => "".to_string(), // uid标签被移除，只保留内容
             BBCodeTag::Flash => "".to_string(),  // flash标签被移除，只保留内容
+            BBCodeTag::Color(_) => "".to_string(), // color标签被移除，只保留内容
+            BBCodeTag::Dice => "".to_string(),   // dice标签结束不需要额外内容
         }
     }
 
@@ -631,6 +643,8 @@ impl BBCodeParser {
             BBCodeTag::Pid(_) => "pid".to_string(),
             BBCodeTag::Uid(_) => "uid".to_string(),
             BBCodeTag::Flash => "flash".to_string(),
+            BBCodeTag::Color(_) => "color".to_string(),
+            BBCodeTag::Dice => "dice".to_string(),
         }
     }
 
