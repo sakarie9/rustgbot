@@ -1843,7 +1843,7 @@ checksum = "357703d41365b4b27c590e3ed91eabb1b663f07c4c084095e60cbed4362dff0d"
 
 [[package]]
 name = "rustgbot"
-version = "0.1.17"
+version = "0.1.18"
 dependencies = [
  "anyhow",
  "common",
