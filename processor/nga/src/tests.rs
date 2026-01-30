@@ -1,7 +1,10 @@
 #[cfg(test)]
 mod nga_tests {
-    use crate::{BBCodeParser, utils::*, *};
-    use common::{SUMMARY_MAX_LENGTH, SUMMARY_MAX_MAX_LENGTH};
+    use crate::bbcode::BBCodeParser;
+    use crate::page::escape_html;
+    use crate::utils::*;
+    use crate::*;
+    use common::{SUMMARY_MAX_LENGTH, SUMMARY_MAX_MAX_LENGTH, substring_desc};
     use dotenv::dotenv;
 
     #[tokio::test]
@@ -270,8 +273,9 @@ mod nga_tests {
     #[test]
     fn test_clean_body_integration_with_nesting() {
         // 测试完整的清理流程，包含嵌套标签
+        // 注意：&lt;b&gt; 会被解码为 <b>，然后被重新转义为 &lt;b&gt;（保护用户输入）
         let input = "&lt;b&gt;[b]粗体[i]斜体[/i]文本[/b] [img]test.jpg[/img] [url]https://example.com[/url]\n\n\n\n新行";
-        let expected = "<b><b>粗体<i>斜体</i>文本</b>  <a href=\"https://example.com\">https://example.com</a>\n\n新行";
+        let expected = "&lt;b&gt;<b>粗体<i>斜体</i>文本</b>  <a href=\"https://example.com\">https://example.com</a>\n\n新行";
         assert_eq!(clean_body(input), expected);
 
         // 测试包含所有类型标签的复杂示例，包括嵌套
@@ -284,8 +288,9 @@ mod nga_tests {
     #[test]
     fn test_clean_body_integration() {
         // 测试完整的清理流程，包含嵌套标签和新的解析器
+        // 注意：&lt;b&gt; 会被解码为 <b>，然后被重新转义为 &lt;b&gt;（保护用户输入）
         let input = "&lt;b&gt;[b]粗体[i]斜体[/i]文本[/b] [img]test.jpg[/img] [url]https://example.com[/url]\n\n\n\n新行";
-        let expected = "<b><b>粗体<i>斜体</i>文本</b>  <a href=\"https://example.com\">https://example.com</a>\n\n新行";
+        let expected = "&lt;b&gt;<b>粗体<i>斜体</i>文本</b>  <a href=\"https://example.com\">https://example.com</a>\n\n新行";
         assert_eq!(clean_body(input), expected);
 
         // 测试包含所有类型标签的复杂示例，包括嵌套
@@ -756,10 +761,13 @@ mod nga_tests {
     #[test]
     fn test_get_summary_with_html_chars() {
         // 测试标题和内容包含HTML特殊字符时的处理
+        // 注意：content 应该在存储前通过 ContentCleaner::clean 处理过
+        // 这里测试的是标题转义功能
         let page = NGAPage {
             url: "https://bbs.nga.cn/test".to_string(),
             title: "测试标题 <text> 包含尖括号".to_string(),
-            content: "内容中也有 <div> 和 & 符号".to_string(),
+            // 模拟经过 clean 处理后的内容（HTML 字符已转义）
+            content: "内容中也有 &lt;div&gt; 和 &amp; 符号".to_string(),
             images: vec![],
         };
 
@@ -769,11 +777,10 @@ mod nga_tests {
 
         // 验证标题中的尖括号被转义
         assert!(summary.contains("&lt;text&gt;"));
-        // 验证内容中的尖括号被转义
+        // 验证内容中的转义字符被保留
         assert!(summary.contains("&lt;div&gt;"));
-        // 验证&符号被转义
         assert!(summary.contains("&amp;"));
-        // 验证不包含未转义的尖括号（除了合法的HTML标签如<b>, <a>等）
+        // 验证不包含未转义的尖括号
         assert!(!summary.contains("<text>"));
         assert!(!summary.contains("<div>"));
     }
