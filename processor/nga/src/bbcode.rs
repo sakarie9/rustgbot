@@ -76,6 +76,7 @@ pub enum ParamTag {
     Uid(String),
     Color(String),
     Sticker(String),
+    Size(String),
 }
 
 impl ParamTag {
@@ -88,6 +89,7 @@ impl ParamTag {
             Self::Uid(_) => "uid",
             Self::Color(_) => "color",
             Self::Sticker(_) => "s",
+            Self::Size(_) => "size",
         }
     }
 }
@@ -193,6 +195,8 @@ impl BBCodeTag {
             ParamTag::Color(v.to_string())
         } else if tag.starts_with("s:ac:") || tag.starts_with("s:") {
             ParamTag::Sticker(tag.to_string())
+        } else if let Some(v) = tag.strip_prefix("size=") {
+            ParamTag::Size(v.to_string())
         } else {
             return None;
         };
@@ -387,6 +391,14 @@ impl BBCodeParser {
                     result.push_str(&format!("[{}] ", title));
                     result.push_str(&processed);
                     result.push_str(&format!(" [/{}]", title));
+                    return;
+                }
+                ParamTag::Size(_) => {
+                    // 将 size 标签视为加粗处理
+                    let processed = Self::new(content).parse();
+                    result.push_str("<b>");
+                    result.push_str(&processed);
+                    result.push_str("</b>");
                     return;
                 }
                 _ => {}
