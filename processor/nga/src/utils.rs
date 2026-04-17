@@ -1,5 +1,4 @@
 use common::get_env_var;
-use rand::Rng;
 use regex::Regex;
 use std::{
     sync::LazyLock,
@@ -88,7 +87,7 @@ pub fn get_nga_guest_cookie() -> String {
         .saturating_sub(100);
 
     let mut rng = rand::rng();
-    let random_num: u32 = rng.random_range(0..=0x100000);
+    let random_num: u32 = rand::RngExt::random_range(&mut rng, 0..=0x100000);
 
     let random5 = format!("{:05x}", random_num);
 
