@@ -1,5 +1,6 @@
 use anyhow::{Result, anyhow};
 use common::{get_env_var, join_url};
+use regex::Regex;
 use url::Url;
 
 use crate::constants::REVERSE_PROXY_URL;
@@ -55,11 +56,8 @@ pub fn build_pixiv_caption(body: &PixivIllustBody) -> Result<String> {
     let description_text = if body.description.is_empty() {
         None
     } else {
-        let cleaned_desc = body
-            .description
-            .replace("<br>", "\n")
-            .replace("<br/>", "\n")
-            .replace("<br />", "\n");
+        // 去除所有 HTML 标签，只保留纯文本
+        let cleaned_desc = strip_html_tags(&body.description);
         // 转义描述中的HTML特殊字符
         Some(escape_html(&cleaned_desc))
     };
@@ -108,6 +106,19 @@ pub fn build_pixiv_caption(body: &PixivIllustBody) -> Result<String> {
     }
 
     Ok(text)
+}
+
+/// 去除 HTML 标签，只保留纯文本
+fn strip_html_tags(text: &str) -> String {
+    // 先替换 <br> 标签为换行符
+    let text = text
+        .replace("<br>", "\n")
+        .replace("<br/>", "\n")
+        .replace("<br />", "\n");
+    // 使用正则表达式去除所有 HTML 标签
+    let re = Regex::new(r"<[^>]+>").unwrap();
+    let text = re.replace_all(&text, "");
+    text.to_string()
 }
 
 // Build real image URLs directly from the first page URL and total page count
