@@ -4,7 +4,7 @@ mod nga_tests {
     use crate::page::escape_html;
     use crate::utils::*;
     use crate::*;
-    use common::{SUMMARY_MAX_LENGTH, SUMMARY_MAX_MAX_LENGTH, substring_desc};
+    use common::{SUMMARY_NORMAL_LIMIT, SUMMARY_TELEGRAM_LIMIT, substring_desc};
     use dotenv::dotenv;
 
     #[tokio::test]
@@ -16,7 +16,14 @@ mod nga_tests {
         // let url = "https://ngabbs.com/read.php?tid=44416669";
         // let url = "https://ngabbs.com/read.php?tid=21929866";
         // let url = "https://ngabbs.com/read.php?tid=41814733";
-        let page = NGAFetcher::fetch_page(url).await.ok().unwrap();
+        // let page = NGAFetcher::fetch_page(url).await.ok().unwrap();
+        let page = NGAFetcher::fetch_page(url).await;
+        let page = if let Ok(p) = page {
+            p
+        } else {
+            panic!("无法获取页面: {}", page.err().unwrap());
+        };
+
         println!("标题: {}", page.title);
         println!("内容: {}", page.content);
         println!("图片链接: {:?}", page.images);
@@ -492,50 +499,62 @@ mod nga_tests {
         let short_text = "这是一个短文本";
         assert_eq!(substring_desc(short_text), short_text);
 
-        // 测试长文本，没有换行符的情况
-        let long_text_no_newline = "a".repeat(SUMMARY_MAX_LENGTH + 100);
-        let result = substring_desc(&long_text_no_newline);
-        assert_eq!(result.len(), SUMMARY_MAX_LENGTH + 6); // 400 个字符 + "……" (6个字符)
-        assert!(result.ends_with("……"));
-
-        // 测试长文本，有合适位置的换行符
-        let long_text_with_newline = format!(
-            "{}{}{}",
-            "a".repeat(SUMMARY_MAX_LENGTH + 100),
-            "\n这里是换行后的内容",
-            "b".repeat(200)
-        );
-        let result = substring_desc(&long_text_with_newline);
-        assert_eq!(result, "a".repeat(SUMMARY_MAX_LENGTH + 100));
-
-        // 测试长文本，换行符在极限长度之后
-        let long_text_late_newline = format!(
-            "{}{}{}",
-            "a".repeat(SUMMARY_MAX_MAX_LENGTH + 100),
-            "\n这里是很晚的换行",
-            "b".repeat(100)
-        );
-        let result = substring_desc(&long_text_late_newline);
-        assert_eq!(result.len(), SUMMARY_MAX_LENGTH + 6); // 400 个字符 + "……"
-        assert!(result.ends_with("……"));
-
-        // 测试包含前后空白字符的文本
-        let text_with_spaces = format!("  {}  ", "内容".repeat(SUMMARY_MAX_LENGTH - 100));
-        let result = substring_desc(&text_with_spaces);
-        assert!(result.ends_with("……"));
-        assert!(!result.starts_with(" "));
-        assert!(!result.trim_end_matches("……").ends_with(" "));
-
-        // 测试正好400字符的文本
-        let exact_length_text = "a".repeat(SUMMARY_MAX_LENGTH);
+        // 测试正好在正常限制内的文本
+        let exact_length_text = "a".repeat(SUMMARY_NORMAL_LIMIT);
         let result = substring_desc(&exact_length_text);
         assert_eq!(result, exact_length_text);
 
-        // 测试401字符的文本
-        let over_length_text = "a".repeat(SUMMARY_MAX_LENGTH + 1);
-        let result = substring_desc(&over_length_text);
-        assert_eq!(result.len(), SUMMARY_MAX_LENGTH + 6); // 400 + "……"
+        // 测试超过正常限制 → 全部内容放入可折叠引用
+        let long_text = "a".repeat(SUMMARY_NORMAL_LIMIT + 100);
+        let result = substring_desc(&long_text);
+        assert!(
+            result.starts_with("<blockquote "),
+            "result starts with: {:?}",
+            &result[..40.min(result.len())]
+        );
+        assert!(result.ends_with("</blockquote>"));
+        assert!(result.ends_with("</blockquote>"));
+        assert!(result.contains(&"a".repeat(SUMMARY_NORMAL_LIMIT + 100)));
+
+        // 测试包含前后空白字符的文本（trim 行为）
+        let text_with_spaces = format!("  {}  ", "内容".repeat(SUMMARY_NORMAL_LIMIT - 100));
+        let result = substring_desc(&text_with_spaces);
+        assert!(!result.starts_with(" "));
+        assert!(result.starts_with("<blockquote "));
+        assert!(result.ends_with("</blockquote>"));
+
+        // 测试超过 Telegram 限制 → 截断后放入可折叠引用
+        let oversized_text = "a".repeat(SUMMARY_TELEGRAM_LIMIT + 100);
+        let result = substring_desc(&oversized_text);
+        assert!(result.starts_with("<blockquote "));
+        assert!(result.contains("……"));
+        assert!(result.ends_with("</blockquote>"));
+    }
+
+    #[test]
+    fn test_substring_desc_with_existing_blockquote() {
+        // 内容已有 blockquote 标签且超过正常限制，不应再包裹新的 blockquote
+        let content_with_bq = format!(
+            "{}<blockquote>折叠内容</blockquote>",
+            "a".repeat(SUMMARY_NORMAL_LIMIT + 100)
+        );
+        let result = substring_desc(&content_with_bq);
+        // 不应额外包裹 blockquote
+        assert_eq!(result, content_with_bq.trim());
+
+        // 已有 blockquote 且超过 Telegram 限制 → 直接截断
+        let oversized_with_bq = format!(
+            "{}<blockquote>折叠内容</blockquote>",
+            "b".repeat(SUMMARY_TELEGRAM_LIMIT + 100)
+        );
+        let result = substring_desc(&oversized_with_bq);
+        assert!(
+            !result.contains("<blockquote "),
+            "should not wrap in extra blockquote"
+        );
         assert!(result.ends_with("……"));
+        // 不应包含完整的内容
+        assert!(result.len() < oversized_with_bq.len());
     }
 
     #[test]
@@ -553,21 +572,22 @@ mod nga_tests {
             "<b><u><a href=\"test\">测试标题</a></u></b>\n\n这是一个短内容"
         );
 
-        // 测试长内容的摘要（会被截取）
+        // 测试长内容的摘要（会触发可折叠引用）
         let long_page = NGAPage {
             url: "test".to_string(),
             title: "长内容测试标题".to_string(),
-            content: "很长的内容".repeat(200), // 这会超过800字符
+            content: "很长的内容".repeat(400), // 5*400=2000 字符，超过 SUMMARY_NORMAL_LIMIT
             images: vec![],
         };
         let summary = get_summary(&long_page);
         assert!(summary.starts_with("<b><u><a href=\"test\">长内容测试标题</a></u></b>"));
-        assert!(summary.ends_with("……"));
+        assert!(summary.contains("<blockquote "));
+        assert!(summary.ends_with("</blockquote>"));
 
-        // 测试包含换行符的长内容
+        // 测试包含换行符的长内容（会在换行符处分隔 + 可折叠引用）
         let content_with_newline = format!(
             "{}{}{}",
-            "第一段内容".repeat(200), // 这会超过800字符
+            "第一段内容".repeat(400), // 5*400=2000 字符，超过 SUMMARY_NORMAL_LIMIT
             "\n第二段内容",
             "后续内容".repeat(50)
         );
@@ -579,8 +599,9 @@ mod nga_tests {
         };
         let summary = get_summary(&newline_page);
         assert!(summary.starts_with("<b><u><a href=\"test\">换行测试</a></u></b>"));
-        // 应该在第一个合适的换行符处截断，而不是添加省略号
-        assert!(!summary.contains("第二段内容"));
+        // 整个内容在 blockquote 内
+        assert!(summary.contains("<blockquote "));
+        assert!(summary.contains("第二段内容"));
     }
 
     #[test]

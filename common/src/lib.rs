@@ -13,8 +13,10 @@ pub use models::*;
 const DEFAULT_MAX_FILE_SIZE: usize = 10 * 1000 * 1000; // 默认最大文件大小：10MB
 pub const GENERAL_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36";
 pub const PIXIV_REFERER: &str = "https://www.pixiv.net/";
-pub const SUMMARY_MAX_LENGTH: usize = 600;
-pub const SUMMARY_MAX_MAX_LENGTH: usize = 800;
+/// 正常截断阈值：内容超过此长度时将使用可折叠引用
+pub const SUMMARY_NORMAL_LIMIT: usize = 600;
+/// Telegram 消息绝对上限（最多 4096 字符），截断到 4000
+pub const SUMMARY_TELEGRAM_LIMIT: usize = 4000;
 
 /// 获取最大文件大小设置，支持从环境变量 MAX_FILE_SIZE 读取
 /// 环境变量值可以是字节数（如 "10485760"）或人类可读格式（如 "10MB", "1GB"）
@@ -238,33 +240,31 @@ pub fn substring_desc_with_truncation(desc: &str, should_truncate: bool) -> Stri
     }
 
     let chars: Vec<char> = desc.chars().collect();
+    let total_len = chars.len();
 
-    // 如果字符数没有超过最大长度，直接返回
-    if chars.len() <= SUMMARY_MAX_LENGTH {
+    // 如果字符数没有超过正常限制，直接返回
+    if total_len <= SUMMARY_NORMAL_LIMIT {
         return desc.trim().to_string();
     }
 
-    // 在最大长度位置之后查找换行符
-    let mut cr_pos = None;
-
-    // 从 SUMMARY_MAX_LENGTH 位置开始查找换行符
-    for (i, c) in chars.iter().enumerate().skip(SUMMARY_MAX_LENGTH) {
-        if *c == '\n' {
-            cr_pos = Some(i);
-            break;
+    // 如果内容已包含 blockquote 标签，不再包裹新的 blockquote
+    if desc.contains("<blockquote>") {
+        if total_len <= SUMMARY_TELEGRAM_LIMIT {
+            return desc.trim().to_string();
+        } else {
+            // 超过 Telegram 限制，直接截断
+            let truncated: String = chars[..SUMMARY_TELEGRAM_LIMIT].iter().collect();
+            return format!("{}……", truncated.trim());
         }
     }
 
-    match cr_pos {
-        Some(pos) if pos < SUMMARY_MAX_MAX_LENGTH => {
-            // 换行符在最大长度和极限长度之间，裁剪到换行符
-            chars[..pos].iter().collect::<String>().trim().to_string()
-        }
-        _ => {
-            // 没有找到合适的换行符，或换行符超过极限长度，直接截取到最大长度并添加省略号
-            let truncated: String = chars[..SUMMARY_MAX_LENGTH].iter().collect();
-            format!("{}……", truncated.trim())
-        }
+    if total_len <= SUMMARY_TELEGRAM_LIMIT {
+        // 超过正常限制但未达 Telegram 上限，整个内容放入可折叠引用
+        format!("<blockquote expandable>{}</blockquote>", desc.trim())
+    } else {
+        // 超过 Telegram 限制，截断后放入可折叠引用
+        let truncated: String = chars[..SUMMARY_TELEGRAM_LIMIT].iter().collect();
+        format!("<blockquote expandable>{}……</blockquote>", truncated.trim())
     }
 }
 
