@@ -65,8 +65,8 @@ dockers_v2:
     #   - linux/amd64
     #   - linux/arm64
     tags:
-      - "{{ if .Tag }}v{{ .Version }}{{ else }}{{ .Branch }}{{ end }}"
-      - "{{ if .Tag }}latest{{ end }}"
+      - "{{ if .IsSnapshot }}{{ .Branch }}{{ else }}v{{ .Version }}{{ end }}"
+      - "{{ if not .IsSnapshot }}latest{{ end }}"
     labels:
       "org.opencontainers.image.created": "{{.Date}}"
       "org.opencontainers.image.name": "{{.ProjectName}}"
