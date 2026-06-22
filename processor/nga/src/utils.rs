@@ -9,15 +9,6 @@ pub const NGA_UA: &str = "NGA_skull/6.0.5(iPhone10,3;iOS 12.0.1)";
 
 // ==== 图片 ====
 
-// 从内容中提取 NGA 图片链接
-static IMG_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[img\](.*?)\[/img\]").unwrap());
-pub fn get_nga_img_links(content: &str) -> Vec<String> {
-    IMG_REGEX
-        .captures_iter(content)
-        .filter_map(|cap| cap.get(1).map(|m| img_link_process(m.as_str())))
-        .collect()
-}
-
 // 处理 NGA 图片链接
 pub fn img_link_process(img_link: &str) -> String {
     let processed_link = if img_link.starts_with("http://") || img_link.starts_with("https://") {
@@ -122,7 +113,7 @@ pub fn preprocess_url(url: &str) -> String {
         let mut has_opt = false;
         let mut has_page = false;
         let mut needs_rebuild = false;
-        
+
         // 在一次循环中检查参数并过滤
         let filtered_pairs: Vec<(String, String)> = parsed_url
             .query_pairs()
@@ -138,19 +129,19 @@ pub fn preprocess_url(url: &str) -> String {
                 if key == "page" {
                     has_page = true;
                 }
-                
+
                 // page 参数总是删除
                 if key == "page" {
                     needs_rebuild = true;
                     return None;
                 }
-                
+
                 // 当同时存在 pid 和 opt 时，删除 opt
                 if key == "opt" && has_pid {
                     needs_rebuild = true;
                     return None;
                 }
-                
+
                 Some((k.into_owned(), v.into_owned()))
             })
             .collect();
@@ -158,7 +149,7 @@ pub fn preprocess_url(url: &str) -> String {
         // 如果需要重建URL（page存在 或 pid和opt同时存在）
         if needs_rebuild || (has_pid && has_opt) {
             parsed_url.set_query(None);
-            
+
             if !filtered_pairs.is_empty() {
                 let query_string = filtered_pairs
                     .iter()

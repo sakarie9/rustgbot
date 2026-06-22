@@ -2,9 +2,7 @@
 
 use scraper::{Html, Selector};
 
-use crate::bbcode::ContentCleaner;
-use crate::utils::get_nga_img_links;
-use common::substring_desc;
+use crate::bbcode::RichContentCleaner;
 
 /// 转义 HTML 特殊字符，防止 Telegram 将文本内容识别为 HTML 标签
 pub fn escape_html(text: &str) -> String {
@@ -18,10 +16,8 @@ pub fn escape_html(text: &str) -> String {
 pub struct NGAPage {
     pub url: String,
     pub title: String,
-    /// 已清理的帖子内容（HTML 格式）
-    pub content: String,
-    /// 提取的图片链接列表
-    pub images: Vec<String>,
+    /// 原始 BBCode 内容（用于生成 Rich Message）
+    raw_content: String,
 }
 
 impl NGAPage {
@@ -43,49 +39,63 @@ impl NGAPage {
         let content_selector = Selector::parse("p#postcontent0").ok()?;
         let raw_content = document.select(&content_selector).next()?.inner_html();
 
-        // 提取图片链接（从原始内容提取）
-        let images = get_nga_img_links(&raw_content);
-
-        // 清理内容
-        let content = ContentCleaner::clean(&raw_content);
-
         #[cfg(debug_assertions)]
-        Self::debug_output(&title, &raw_content, &content, &images);
+        Self::debug_output(&title, &raw_content);
 
         Some(Self {
             url: url.to_string(),
             title,
-            content,
-            images,
+            raw_content: raw_content.to_string(),
         })
     }
 
-    /// 生成摘要文本
-    pub fn to_summary(&self) -> String {
-        let escaped_title = escape_html(self.title.trim());
-        let title_html = format!(
-            "<b><u><a href=\"{}\">{}</a></u></b>",
-            self.url, escaped_title
-        );
-        let truncated_content = substring_desc(&self.content);
+    /// 生成 Rich Message HTML
+    ///
+    /// 使用 Rich Message 格式保留原始帖子布局
+    pub fn to_rich_html(&self) -> String {
+        let rich_content = RichContentCleaner::clean(&self.raw_content);
 
-        let summary = format!("{}\n\n{}", title_html, truncated_content);
+        // 仅在标题非空时生成标题块
+        let title_block = if !self.title.trim().is_empty() {
+            let escaped_title = escape_html(&self.title);
+            format!("<h3><a href=\"{}\">{}</a></h3>", self.url, escaped_title)
+        } else {
+            String::new()
+        };
 
-        #[cfg(debug_assertions)]
-        println!("Summary:\n{}", summary);
+        // 将连续换行转为段落分隔，单换行转为 <br/>
+        // Telegram 的 rich message 解析器会自动识别块级标签
+        let content = rich_content
+            .split("\n\n")
+            .filter(|s| !s.trim().is_empty())
+            .map(|s| {
+                let trimmed = s.trim();
+                // 如果已经是块级标签开头，直接保留
+                if trimmed.starts_with('<')
+                    && (trimmed.starts_with("<blockquote")
+                        || trimmed.starts_with("<table")
+                        || trimmed.starts_with("<details")
+                        || trimmed.starts_with("<pre")
+                        || trimmed.starts_with("<h")
+                        || trimmed.starts_with("<hr")
+                        || trimmed.starts_with("<img"))
+                {
+                    trimmed.to_string()
+                } else {
+                    let with_br = trimmed.replace('\n', "<br/>");
+                    format!("<p>{}</p>", with_br)
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
 
-        summary
+        format!("{}{}", title_block, content)
     }
 
     #[cfg(debug_assertions)]
-    fn debug_output(title: &str, raw: &str, cleaned: &str, images: &[String]) {
+    fn debug_output(title: &str, raw: &str) {
         println!("--- 提取结果 ---");
         println!("标题: {}", title);
         println!("原始内容:\n{}", raw.trim());
-        println!("清理内容:\n{}", cleaned.trim());
-        println!("--- 提取到的图片链接 🖼️ ---");
-        for link in images {
-            println!("{}", link);
-        }
     }
 }

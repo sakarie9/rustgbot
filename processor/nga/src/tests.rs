@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod nga_tests {
-    use crate::bbcode::BBCodeParser;
+    use crate::bbcode::RichBBCodeParser;
     use crate::page::escape_html;
     use crate::utils::*;
     use crate::*;
@@ -25,8 +25,7 @@ mod nga_tests {
         };
 
         println!("标题: {}", page.title);
-        println!("内容: {}", page.content);
-        println!("图片链接: {:?}", page.images);
+        println!("内容: {}", page.to_rich_html());
     }
 
     #[test]
@@ -128,7 +127,9 @@ mod nga_tests {
         let page = parse_nga_page("test_url", html);
         assert!(page.is_some());
         let page = page.unwrap();
-        assert_eq!(page.content, "This is a test content.");
+        let rich = page.to_rich_html();
+        assert!(rich.contains("Test Title"));
+        assert!(rich.contains("This is a test content."));
     }
 
     #[test]
@@ -170,52 +171,52 @@ mod nga_tests {
     fn test_bbcode_parser_simple() {
         // 测试简单的粗体标签
         let input = "[b]Bold text[/b]";
-        let mut parser = BBCodeParser::new(input);
+        let mut parser = RichBBCodeParser::new(input);
         let result = parser.parse();
         assert_eq!(result, "<b>Bold text</b>");
 
         // 测试斜体标签
         let input = "[i]Italic text[/i]";
-        let mut parser = BBCodeParser::new(input);
+        let mut parser = RichBBCodeParser::new(input);
         let result = parser.parse();
         assert_eq!(result, "<i>Italic text</i>");
 
-        // 测试图片标签（应该被移除）
+        // 测试图片标签（Rich 解析器转为 <img> 标签）
         let input = "Before [img]test.jpg[/img] after";
-        let mut parser = BBCodeParser::new(input);
+        let mut parser = RichBBCodeParser::new(input);
         let result = parser.parse();
-        assert_eq!(result, "Before  after");
+        assert_eq!(result, "Before <img src=\"test.jpg\"/> after");
     }
 
     #[test]
     fn test_bbcode_parser_nested() {
         // 测试嵌套标签 - 这是新功能的核心测试
         let input = "[b]外层[i]内层斜体[/i]继续粗体[/b]";
-        let mut parser = BBCodeParser::new(input);
+        let mut parser = RichBBCodeParser::new(input);
         let result = parser.parse();
         assert_eq!(result, "<b>外层<i>内层斜体</i>继续粗体</b>");
 
         // 测试更复杂的嵌套
         let input = "[b]粗体[u]下划线[i]斜体[/i]继续下划线[/u]继续粗体[/b]";
-        let mut parser = BBCodeParser::new(input);
+        let mut parser = RichBBCodeParser::new(input);
         let result = parser.parse();
         assert_eq!(
             result,
             "<b>粗体<u>下划线<i>斜体</i>继续下划线</u>继续粗体</b>"
         );
 
-        // 测试嵌套中包含需要移除的内容
+        // 测试嵌套中包含图片标签
         let input = "[b]粗体[img]image.jpg[/img]继续粗体[/b]";
-        let mut parser = BBCodeParser::new(input);
+        let mut parser = RichBBCodeParser::new(input);
         let result = parser.parse();
-        assert_eq!(result, "<b>粗体继续粗体</b>");
+        assert_eq!(result, "<b>粗体<img src=\"image.jpg\"/>继续粗体</b>");
     }
 
     #[test]
     fn test_bbcode_parser_url() {
         // 测试 URL 标签
         let input = "[url]https://example.com[/url]";
-        let mut parser = BBCodeParser::new(input);
+        let mut parser = RichBBCodeParser::new(input);
         let result = parser.parse();
         assert_eq!(
             result,
@@ -225,30 +226,30 @@ mod nga_tests {
 
     #[test]
     fn test_bbcode_parser_quote() {
-        // 测试引用标签（应该被简化）
+        // 测试引用标签（Rich 解析器用 <blockquote> 包裹，前后有段落分隔）
         let input = "[quote]引用内容[/quote]";
-        let mut parser = BBCodeParser::new(input);
+        let mut parser = RichBBCodeParser::new(input);
         let result = parser.parse();
-        assert_eq!(result, "<blockquote>引用内容</blockquote>");
+        assert_eq!(result, "\n\n<blockquote>引用内容</blockquote>\n\n");
     }
 
     #[test]
     fn test_bbcode_parser_sticker() {
         // 测试表情标签（应该被移除）
         let input = "Hello [s:ac:赞同] world";
-        let mut parser = BBCodeParser::new(input);
+        let mut parser = RichBBCodeParser::new(input);
         let result = parser.parse();
         assert_eq!(result, "Hello  world");
 
         // 测试另一个表情标签
         let input = "Test [s:ac:cry] more text";
-        let mut parser = BBCodeParser::new(input);
+        let mut parser = RichBBCodeParser::new(input);
         let result = parser.parse();
         assert_eq!(result, "Test  more text");
 
         // 测试嵌套中的表情标签
         let input = "[b]粗体[s:ac:smile]继续粗体[/b]";
-        let mut parser = BBCodeParser::new(input);
+        let mut parser = RichBBCodeParser::new(input);
         let result = parser.parse();
         assert_eq!(result, "<b>粗体继续粗体</b>");
     }
@@ -257,13 +258,13 @@ mod nga_tests {
     fn test_bbcode_parser_flash() {
         // 测试 flash 标签（应该被移除，只保留内容）
         let input = "[flash]https://www.bilibili.com/video/test[/flash]";
-        let mut parser = BBCodeParser::new(input);
+        let mut parser = RichBBCodeParser::new(input);
         let result = parser.parse();
         assert_eq!(result, "https://www.bilibili.com/video/test");
 
         // 测试带其他内容的 flash 标签
         let input = "查看视频: [flash]https://www.bilibili.com/video/BV123456[/flash] 精彩内容";
-        let mut parser = BBCodeParser::new(input);
+        let mut parser = RichBBCodeParser::new(input);
         let result = parser.parse();
         assert_eq!(
             result,
@@ -272,49 +273,57 @@ mod nga_tests {
 
         // 测试嵌套中的 flash 标签
         let input = "[b]粗体[flash]https://example.com/video[/flash]继续粗体[/b]";
-        let mut parser = BBCodeParser::new(input);
+        let mut parser = RichBBCodeParser::new(input);
         let result = parser.parse();
         assert_eq!(result, "<b>粗体https://example.com/video继续粗体</b>");
     }
 
     #[test]
     fn test_clean_body_integration_with_nesting() {
-        // 测试完整的清理流程，包含嵌套标签
-        // 注意：&lt;b&gt; 会被解码为 <b>，然后被重新转义为 &lt;b&gt;（保护用户输入）
+        // 测试 RichContentCleaner 的完整清理流程
+        // 注意：Rich 解析器不转义 HTML，&lt; 会被解码为 <
         let input = "&lt;b&gt;[b]粗体[i]斜体[/i]文本[/b] [img]test.jpg[/img] [url]https://example.com[/url]\n\n\n\n新行";
-        let expected = "&lt;b&gt;<b>粗体<i>斜体</i>文本</b>  <a href=\"https://example.com\">https://example.com</a>\n\n新行";
-        assert_eq!(clean_body(input), expected);
+        let result = RichContentCleaner::clean(input);
+        // &lt;b&gt; → <b>（解码后作为纯文本）
+        assert!(result.contains("<b>"));
+        assert!(result.contains("<b>粗体<i>斜体</i>文本</b>"));
+        assert!(result.contains("<img src=\"test.jpg\"/>"));
+        assert!(result.contains("<a href=\"https://example.com\">https://example.com</a>"));
 
-        // 测试包含所有类型标签的复杂示例，包括嵌套
+        // 测试包含引用的复杂示例
         let complex_input = "[quote][b]粗体引用[i]斜体[/i][/b][/quote] &quot;文本&quot; [img]image.png[/img]\n\n\n\n新行";
-        let complex_expected =
-            "<blockquote><b>粗体引用<i>斜体</i></b></blockquote> \"文本\" \n\n新行";
-        assert_eq!(clean_body(complex_input), complex_expected);
+        let complex_result = RichContentCleaner::clean(complex_input);
+        assert!(complex_result.contains("<blockquote>"));
+        assert!(complex_result.contains("<b>粗体引用<i>斜体</i></b>"));
+        assert!(complex_result.contains("\"文本\""));
+        assert!(complex_result.contains("<img src=\"image.png\"/>"));
     }
 
     #[test]
     fn test_clean_body_integration() {
-        // 测试完整的清理流程，包含嵌套标签和新的解析器
-        // 注意：&lt;b&gt; 会被解码为 <b>，然后被重新转义为 &lt;b&gt;（保护用户输入）
+        // 测试 RichContentCleaner 的完整清理流程
         let input = "&lt;b&gt;[b]粗体[i]斜体[/i]文本[/b] [img]test.jpg[/img] [url]https://example.com[/url]\n\n\n\n新行";
-        let expected = "&lt;b&gt;<b>粗体<i>斜体</i>文本</b>  <a href=\"https://example.com\">https://example.com</a>\n\n新行";
-        assert_eq!(clean_body(input), expected);
+        let result = RichContentCleaner::clean(input);
+        assert!(result.contains("<b>粗体<i>斜体</i>文本</b>"));
+        assert!(result.contains("<img src=\"test.jpg\"/>"));
+        assert!(result.contains("<a href=\"https://example.com\">"));
 
-        // 测试包含所有类型标签的复杂示例，包括嵌套
+        // 测试引用标签
         let complex_input = "[quote][b]粗体引用[i]斜体[/i][/b][/quote] &quot;文本&quot; [img]image.png[/img]\n\n\n\n新行";
-        let complex_expected =
-            "<blockquote><b>粗体引用<i>斜体</i></b></blockquote> \"文本\" \n\n新行";
-        assert_eq!(clean_body(complex_input), complex_expected);
+        let complex_result = RichContentCleaner::clean(complex_input);
+        assert!(complex_result.contains("<blockquote>"));
+        assert!(complex_result.contains("<b>粗体引用<i>斜体</i></b>"));
+        assert!(complex_result.contains("\"文本\""));
 
         // 测试表情标签
         let sticker_input = "测试文本 [s:ac:赞同] 继续文本 [s:ac:cry] 结束";
-        let sticker_expected = "测试文本  继续文本  结束";
-        assert_eq!(clean_body(sticker_input), sticker_expected);
+        let sticker_result = RichContentCleaner::clean(sticker_input);
+        assert_eq!(sticker_result, "测试文本  继续文本  结束");
 
         // 测试混合表情和其他标签
         let mixed_input = "[b]粗体[s:ac:smile]更多粗体[/b] [s:ac:赞同] 普通文本";
-        let mixed_expected = "<b>粗体更多粗体</b>  普通文本";
-        assert_eq!(clean_body(mixed_input), mixed_expected);
+        let mixed_result = RichContentCleaner::clean(mixed_input);
+        assert_eq!(mixed_result, "<b>粗体更多粗体</b>  普通文本");
     }
 
     #[test]
@@ -325,7 +334,7 @@ mod nga_tests {
         let simple_input = "[b]简单粗体[/b] [i]简单斜体[/i] [u]简单下划线[/u]".repeat(100);
         let start = Instant::now();
         for _ in 0..1000 {
-            clean_body(&simple_input);
+            RichContentCleaner::clean(&simple_input);
         }
         let simple_duration = start.elapsed();
         println!("简单标签 1000次处理耗时: {:?}", simple_duration);
@@ -334,7 +343,7 @@ mod nga_tests {
         let nested_input = "[b]粗体[i]斜体[u]下划线[s]删除线[/s][/u][/i][/b]".repeat(100);
         let start = Instant::now();
         for _ in 0..1000 {
-            clean_body(&nested_input);
+            RichContentCleaner::clean(&nested_input);
         }
         let nested_duration = start.elapsed();
         println!("嵌套标签 1000次处理耗时: {:?}", nested_duration);
@@ -366,7 +375,7 @@ mod nga_tests {
 
         let start = Instant::now();
         for _ in 0..1000 {
-            clean_body(&deep_nested);
+            RichContentCleaner::clean(&deep_nested);
         }
         let duration = start.elapsed();
         println!("深度嵌套 1000次处理耗时: {:?}", duration);
@@ -399,7 +408,7 @@ mod nga_tests {
 
         let start = Instant::now();
         for _ in 0..100 {
-            clean_body(&large_input);
+            RichContentCleaner::clean(&large_input);
         }
         let duration = start.elapsed();
         println!("大输入 100次处理耗时: {:?}", duration);
@@ -420,7 +429,7 @@ mod nga_tests {
 
         let start = Instant::now();
         for _ in 0..1000 {
-            clean_body(&malformed_input);
+            RichContentCleaner::clean(&malformed_input);
         }
         let duration = start.elapsed();
         println!("畸形标签 1000次处理耗时: {:?}", duration);
@@ -468,15 +477,11 @@ mod nga_tests {
         for (name, input, iterations) in test_cases {
             let start = Instant::now();
             for _ in 0..iterations {
-                let _ = clean_body(input);
+                let _ = RichContentCleaner::clean(input);
             }
             let duration = start.elapsed();
             let avg_ns = duration.as_nanos() / iterations;
-            let ops_per_sec = if avg_ns > 0 {
-                1_000_000_000 / avg_ns
-            } else {
-                0
-            };
+            let ops_per_sec = 1_000_000_000_u128.checked_div(avg_ns).unwrap_or(0);
 
             println!(
                 "{:<12} {:<45} {:<12} {:<15} {:<15}",
@@ -558,53 +563,6 @@ mod nga_tests {
     }
 
     #[test]
-    fn test_get_summary_with_truncation() {
-        // 测试短内容的摘要
-        let short_page = NGAPage {
-            url: "test".to_string(),
-            title: "测试标题".to_string(),
-            content: "这是一个短内容".to_string(),
-            images: vec![],
-        };
-        let summary = get_summary(&short_page);
-        assert_eq!(
-            summary,
-            "<b><u><a href=\"test\">测试标题</a></u></b>\n\n这是一个短内容"
-        );
-
-        // 测试长内容的摘要（会触发可折叠引用）
-        let long_page = NGAPage {
-            url: "test".to_string(),
-            title: "长内容测试标题".to_string(),
-            content: "很长的内容".repeat(400), // 5*400=2000 字符，超过 SUMMARY_NORMAL_LIMIT
-            images: vec![],
-        };
-        let summary = get_summary(&long_page);
-        assert!(summary.starts_with("<b><u><a href=\"test\">长内容测试标题</a></u></b>"));
-        assert!(summary.contains("<blockquote "));
-        assert!(summary.ends_with("</blockquote>"));
-
-        // 测试包含换行符的长内容（会在换行符处分隔 + 可折叠引用）
-        let content_with_newline = format!(
-            "{}{}{}",
-            "第一段内容".repeat(400), // 5*400=2000 字符，超过 SUMMARY_NORMAL_LIMIT
-            "\n第二段内容",
-            "后续内容".repeat(50)
-        );
-        let newline_page = NGAPage {
-            url: "test".to_string(),
-            title: "换行测试".to_string(),
-            content: content_with_newline,
-            images: vec![],
-        };
-        let summary = get_summary(&newline_page);
-        assert!(summary.starts_with("<b><u><a href=\"test\">换行测试</a></u></b>"));
-        // 整个内容在 blockquote 内
-        assert!(summary.contains("<blockquote "));
-        assert!(summary.contains("第二段内容"));
-    }
-
-    #[test]
     fn test_preprocess_url_removes_opt_when_pid_exists() {
         let url = "https://example.com/path?pid=123&opt=456&other=789";
         let result = preprocess_url(url);
@@ -628,24 +586,24 @@ mod nga_tests {
     #[test]
     fn test_bbcode_url_parsing() {
         // 测试带参数的URL: [url=https://x.com]推特[/url]
-        let mut parser1 = BBCodeParser::new("[url=https://x.com]推特[/url]");
+        let mut parser1 = RichBBCodeParser::new("[url=https://x.com]推特[/url]");
         let result1 = parser1.parse();
         assert_eq!(result1, "<a href=\"https://x.com\">推特</a>");
 
         // 测试不带参数的URL: [url]https://x.com[/url]
-        let mut parser2 = BBCodeParser::new("[url]https://x.com[/url]");
+        let mut parser2 = RichBBCodeParser::new("[url]https://x.com[/url]");
         let result2 = parser2.parse();
         assert_eq!(result2, "<a href=\"https://x.com\">https://x.com</a>");
 
         // 测试混合内容
         let input = "访问[url=https://x.com]推特[/url]或者直接点击[url]https://github.com[/url]";
-        let mut parser3 = BBCodeParser::new(input);
+        let mut parser3 = RichBBCodeParser::new(input);
         let result3 = parser3.parse();
         let expected = "访问<a href=\"https://x.com\">推特</a>或者直接点击<a href=\"https://github.com\">https://github.com</a>";
         assert_eq!(result3, expected);
 
         // 测试嵌套标签
-        let mut parser4 = BBCodeParser::new("[url=https://example.com][b]粗体链接[/b][/url]");
+        let mut parser4 = RichBBCodeParser::new("[url=https://example.com][b]粗体链接[/b][/url]");
         let result4 = parser4.parse();
         assert_eq!(
             result4,
@@ -703,7 +661,7 @@ mod nga_tests {
 [/tr]
 [/table]"#;
 
-        let mut parser = BBCodeParser::new(input);
+        let mut parser = RichBBCodeParser::new(input);
         let result = parser.parse();
 
         println!("用户提供的表格示例：");
@@ -719,7 +677,7 @@ mod nga_tests {
     fn test_table_simple() {
         let input = "[table][tr][td]第一列[/td][td]第二列[/td][/tr][/table]";
 
-        let mut parser = BBCodeParser::new(input);
+        let mut parser = RichBBCodeParser::new(input);
         let result = parser.parse();
 
         println!("简单表格输入: {}", input);
@@ -731,27 +689,28 @@ mod nga_tests {
 
     #[test]
     fn test_collapse_tags() {
-        // 测试带标题的 collapse 标签
+        // 测试带标题的 collapse 标签（Rich 解析器用 <details>）
         let input_with_title = "[collapse=详细内容]这是折叠的内容[/collapse]";
-        let mut parser = BBCodeParser::new(input_with_title);
+        let mut parser = RichBBCodeParser::new(input_with_title);
         let result = parser.parse();
 
         println!("带标题的collapse输入: {}", input_with_title);
         println!("带标题的collapse结果: {}", result);
 
-        assert!(result.contains("[详细内容]"));
+        assert!(result.contains("<details>"));
+        assert!(result.contains("<summary>详细内容</summary>"));
         assert!(result.contains("这是折叠的内容"));
-        assert!(result.contains("[/详细内容]"));
+        assert!(result.contains("</details>"));
 
-        // 测试无标题的 collapse 标签
+        // 测试无标题的 collapse 标签（passthrough，直接输出内容）
         let input_without_title = "[collapse]这是折叠的内容[/collapse]";
-        let mut parser2 = BBCodeParser::new(input_without_title);
+        let mut parser2 = RichBBCodeParser::new(input_without_title);
         let result2 = parser2.parse();
 
         println!("无标题的collapse输入: {}", input_without_title);
         println!("无标题的collapse结果: {}", result2);
 
-        assert!(result2.contains("这是折叠的内容"));
+        assert_eq!(result2, "这是折叠的内容");
     }
 
     #[test]
@@ -780,29 +739,20 @@ mod nga_tests {
     }
 
     #[test]
-    fn test_get_summary_with_html_chars() {
-        // 测试标题和内容包含HTML特殊字符时的处理
-        // 注意：content 应该在存储前通过 ContentCleaner::clean 处理过
-        // 这里测试的是标题转义功能
-        let page = NGAPage {
-            url: "https://bbs.nga.cn/test".to_string(),
-            title: "测试标题 <text> 包含尖括号".to_string(),
-            // 模拟经过 clean 处理后的内容（HTML 字符已转义）
-            content: "内容中也有 &lt;div&gt; 和 &amp; 符号".to_string(),
-            images: vec![],
-        };
-
-        let summary = get_summary(&page);
-
-        println!("Summary with HTML chars: {}", summary);
-
+    fn test_rich_html_title_escape() {
+        // 测试标题包含HTML特殊字符时的转义
+        let html = r#"
+            <html>
+                <body>
+                    <h3 id="postsubject0">测试标题 &lt;text&gt; 包含尖括号</h3>
+                    <p id="postcontent0">正常内容</p>
+                </body>
+            </html>
+        "#;
+        let page = parse_nga_page("https://bbs.nga.cn/test", html);
+        assert!(page.is_some());
+        let rich = page.unwrap().to_rich_html();
         // 验证标题中的尖括号被转义
-        assert!(summary.contains("&lt;text&gt;"));
-        // 验证内容中的转义字符被保留
-        assert!(summary.contains("&lt;div&gt;"));
-        assert!(summary.contains("&amp;"));
-        // 验证不包含未转义的尖括号
-        assert!(!summary.contains("<text>"));
-        assert!(!summary.contains("<div>"));
+        assert!(rich.contains("&lt;text&gt;"));
     }
 }

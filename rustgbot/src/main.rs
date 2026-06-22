@@ -27,6 +27,7 @@ const TELEGRAM_PROXY_ENV_VAR: &str = "TELEGRAM_PROXY";
 pub enum BotResponse {
     Text(String),
     Photo(ProcessorResultMedia),
+    RichMessage(String),
     Error(String),
 }
 
@@ -136,6 +137,24 @@ pub async fn send_bot_responses(
                     .original_urls(media.original_urls)
                     .send_photo(bot)
                     .await
+            }
+            BotResponse::RichMessage(html) => {
+                // Rich Message 使用 frankenstein 直接发送
+                if let Err(e) =
+                    bot::send_rich_message(chat_id, Some(message_id), None, Some(&html), false)
+                        .await
+                {
+                    log::error!("Failed to send rich message to chat {}: {}", chat_id, e);
+                    // 回退到普通文本发送
+                    let _ = MessageSenderBuilder::new(
+                        chat_id,
+                        format!("[Rich Message 发送失败: {}]", e),
+                    )
+                    .message_id(message_id)
+                    .send_message(bot)
+                    .await;
+                }
+                continue;
             }
             BotResponse::Error(err) => {
                 MessageSenderBuilder::new(chat_id, err)
@@ -258,6 +277,9 @@ async fn process_links_internal(text: &str, is_truncation: bool) -> Option<Vec<B
                 }
                 Ok(ProcessorResult::Media(parsed)) => {
                     results.push(BotResponse::Photo(parsed));
+                }
+                Ok(ProcessorResult::Rich(rich)) => {
+                    results.push(BotResponse::RichMessage(rich.html));
                 }
                 Err(e) => {
                     let error = format!(

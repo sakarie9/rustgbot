@@ -1,5 +1,18 @@
 use anyhow::Result;
 use common::convert_bytes;
+
+/// 按字符边界安全截断字符串
+fn truncate_str(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    // 找到不超过 max_bytes 的最大字符边界
+    let mut end = max_bytes;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
 use common::extract_filename_from_url;
 use common::guess_content_type_from_url;
 use teloxide::payloads::SendAnimation;
@@ -592,7 +605,7 @@ fn get_frankenstein_bot() -> &'static frankenstein::client_reqwest::Bot {
         dotenv::dotenv().ok();
         let token = std::env::var("TELEGRAM_TOKEN").expect("TELEGRAM_TOKEN must be set");
         let client = common::build_reqwest_client();
-        let api_url = format!("https://api.telegram.org/bot{}/", token);
+        let api_url = format!("{}{}", frankenstein::BASE_API_URL, token);
         frankenstein::client_reqwest::Bot::builder()
             .api_url(api_url)
             .client(client)
@@ -669,8 +682,8 @@ pub async fn send_rich_message(
     log::debug!(
         "send_rich_message: chat_id={}, markdown={:?}, html={:?}, is_rtl={}",
         chat_id.0,
-        markdown.map(|s| &s[..s.len().min(50)]),
-        html.map(|s| &s[..s.len().min(50)]),
+        markdown.map(|s| truncate_str(s, 50)),
+        html.map(|s| truncate_str(s, 50)),
         is_rtl,
     );
 
@@ -695,6 +708,7 @@ pub async fn send_rich_message(
 /// - `draft_id`: 草稿标识符，相同 draft_id 的更新会带动画过渡
 /// - `markdown`: Rich Markdown 格式的内容
 /// - `html`: Rich HTML 格式的内容
+#[allow(dead_code)]
 pub async fn send_rich_message_draft(
     chat_id: ChatId,
     draft_id: i64,

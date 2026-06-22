@@ -14,7 +14,7 @@
 use regex::Regex;
 use std::sync::OnceLock;
 
-use common::{LinkProcessor, ProcessorError, ProcessorResult, ProcessorResultType};
+use common::{LinkProcessor, ProcessorError, ProcessorResultType};
 
 pub mod bbcode;
 mod error;
@@ -23,7 +23,7 @@ mod page;
 mod tests;
 mod utils;
 
-pub use bbcode::{BBCodeParser, ContentCleaner};
+pub use bbcode::RichContentCleaner;
 pub use error::{NGAError, NGAResult};
 pub use fetcher::NGAFetcher;
 pub use page::NGAPage;
@@ -61,7 +61,6 @@ impl LinkProcessor for NGALinkProcessor {
         let url = captures.get(0).unwrap().as_str();
         NGAFetcher::parse(url)
             .await
-            .map(ProcessorResult::Media)
             .map_err(|e| ProcessorError::with_source("处理NGA链接失败", e.to_string()))
     }
 
@@ -71,22 +70,12 @@ impl LinkProcessor for NGALinkProcessor {
 }
 
 // ============================================================================
-// 向后兼容函数（仅供测试使用）
+// 测试辅助函数
 // ============================================================================
-
-#[cfg(test)]
-fn clean_body(body: &str) -> String {
-    ContentCleaner::clean(body)
-}
 
 #[cfg(test)]
 fn parse_nga_page(url: &str, html: &str) -> Option<NGAPage> {
     NGAPage::from_html(url, html)
-}
-
-#[cfg(test)]
-fn get_summary(page: &NGAPage) -> String {
-    page.to_summary()
 }
 
 #[cfg(test)]
