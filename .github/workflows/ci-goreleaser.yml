@@ -1,8 +1,6 @@
 name: ci-goreleaser
 
 on:
-  push:
-    branches: ["main"]
   workflow_dispatch:
 
 permissions:
