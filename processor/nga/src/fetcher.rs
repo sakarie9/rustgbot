@@ -9,16 +9,13 @@ pub struct NGAFetcher;
 
 impl NGAFetcher {
     /// 解析 NGA 链接并返回处理结果
-    pub async fn parse(url: &str) -> NGAResult<common::ProcessorResultMedia> {
+    pub async fn parse(url: &str) -> NGAResult<common::ProcessorResult> {
         let processed_url = preprocess_url(url);
         let page = Self::fetch_page(&processed_url).await?;
 
-        Ok(common::ProcessorResultMedia {
-            caption: page.to_summary(),
-            urls: page.images,
-            spoiler: false,
-            original_urls: None,
-        })
+        Ok(common::ProcessorResult::Rich(common::ProcessorResultRich {
+            html: page.to_rich_html(),
+        }))
     }
 
     /// 获取并解析 NGA 页面

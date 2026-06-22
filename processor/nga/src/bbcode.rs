@@ -17,7 +17,7 @@ use regex::Regex;
 use std::sync::OnceLock;
 
 use crate::page::escape_html;
-use crate::utils::{normalize_newlines, replace_html_entities};
+use crate::utils::{img_link_process, normalize_newlines, replace_html_entities};
 
 // ============================================================================
 // 标签注册表 - 添加简单标签只需在此处添加一行
@@ -53,6 +53,7 @@ const TAG_REGISTRY: &[TagDef] = &[
     TagDef::passthrough("url"),
     TagDef::passthrough("collapse"),
     TagDef::passthrough("color"),
+    TagDef::passthrough("h"),
     // 特殊标签
     TagDef::new("dice", "🎲 ", ""),
 ];
@@ -77,6 +78,7 @@ pub enum ParamTag {
     Color(String),
     Sticker(String),
     Size(String),
+    Align(String),
 }
 
 impl ParamTag {
@@ -90,6 +92,7 @@ impl ParamTag {
             Self::Color(_) => "color",
             Self::Sticker(_) => "s",
             Self::Size(_) => "size",
+            Self::Align(_) => "align",
         }
     }
 }
@@ -197,6 +200,8 @@ impl BBCodeTag {
             ParamTag::Sticker(tag.to_string())
         } else if let Some(v) = tag.strip_prefix("size=") {
             ParamTag::Size(v.to_string())
+        } else if let Some(v) = tag.strip_prefix("align=") {
+            ParamTag::Align(v.to_string())
         } else {
             return None;
         };
@@ -248,45 +253,30 @@ impl BBCodeTag {
 }
 
 // ============================================================================
-// 内容清理器
+// Rich Message BBCode 解析器
 // ============================================================================
 
-/// 内容清理器，负责将 NGA 的 BBCode 格式转换为 Telegram HTML
-pub struct ContentCleaner;
+/// Rich Message 内容清理器
+pub struct RichContentCleaner;
 
-impl ContentCleaner {
-    /// 清理帖子内容
-    ///
-    /// 处理流程：
-    /// 1. 解码 HTML 实体（&lt; -> <）
-    /// 2. 转义用户内容中的 HTML 特殊字符
-    /// 3. 解析 BBCode 并转换为 HTML
-    /// 4. 规范化换行符
+impl RichContentCleaner {
+    /// 清理帖子内容为 Rich Message HTML
     pub fn clean(body: &str) -> String {
-        // 解码 HTML 实体
         let decoded = replace_html_entities(body);
-        // 转义用户内容（在 BBCode 解析前，保护用户输入）
-        let escaped = escape_html(&decoded);
-        // 解析 BBCode
-        let parsed = BBCodeParser::new(&escaped).parse();
-        // 规范化换行
+        let parsed = RichBBCodeParser::new(&decoded).parse();
         normalize_newlines(&parsed)
     }
 }
 
-// ============================================================================
-// BBCode 解析器
-// ============================================================================
-
-/// BBCode 解析器
+/// Rich Message BBCode 解析器
 ///
-/// 将 NGA 的 BBCode 格式转换为 Telegram 支持的 HTML 格式
-pub struct BBCodeParser {
+/// 将 NGA 的 BBCode 转换为 Telegram Rich Message HTML
+pub struct RichBBCodeParser {
     chars: Vec<char>,
     pos: usize,
 }
 
-impl BBCodeParser {
+impl RichBBCodeParser {
     pub fn new(input: &str) -> Self {
         Self {
             chars: input.chars().collect(),
@@ -294,23 +284,18 @@ impl BBCodeParser {
         }
     }
 
-    /// 解析输入并返回 HTML 字符串
     pub fn parse(&mut self) -> String {
         let mut result = String::new();
-
         while self.pos < self.chars.len() {
-            if self.is_opening_tag() {
+            if self.current_char() == '[' && self.peek_char() != '/' {
                 self.process_tag(&mut result);
             } else {
                 result.push(self.current_char());
                 self.pos += 1;
             }
         }
-
         result
     }
-
-    // ========== 字符访问方法 ==========
 
     fn current_char(&self) -> char {
         self.chars.get(self.pos).copied().unwrap_or('\0')
@@ -320,18 +305,10 @@ impl BBCodeParser {
         self.chars.get(self.pos + 1).copied().unwrap_or('\0')
     }
 
-    fn is_opening_tag(&self) -> bool {
-        self.current_char() == '[' && self.peek_char() != '/'
-    }
-
-    // ========== 标签解析方法 ==========
-
-    /// 处理可能的 BBCode 标签
     fn process_tag(&mut self, result: &mut String) {
         if let Some((tag, tag_end)) = self.parse_opening_tag_at(self.pos) {
             self.pos = tag_end;
 
-            // 自闭合标签（如表情）
             if tag.is_self_closing() {
                 if !tag.should_remove_content() {
                     result.push_str(tag.to_html_open());
@@ -340,181 +317,108 @@ impl BBCodeParser {
                 return;
             }
 
-            // 查找匹配的结束标签
             if let Some(content_end) = self.find_closing_tag(&tag) {
                 let content = self.extract_content(self.pos, content_end);
 
-                // 需要移除内容的标签（如图片）
                 if tag.should_remove_content() {
+                    // [img] → <img/>
+                    if tag.base_name() == "img" {
+                        let img_url = img_link_process(&content);
+                        result.push_str(&format!("<img src=\"{}\"/>", img_url));
+                    }
                     self.skip_closing_tag_at(content_end);
                     return;
                 }
 
-                // 处理标签
                 self.render_tag(&tag, &content, result);
                 self.skip_closing_tag_at(content_end);
             } else {
-                // 没有匹配的结束标签，作为普通文本处理
                 result.push('[');
             }
         } else {
-            // 不是有效标签
             result.push(self.current_char());
             self.pos += 1;
         }
     }
 
-    /// 渲染标签及其内容
-    ///
-    /// 如需为带参数标签添加特殊渲染，在此添加处理
     fn render_tag(&self, tag: &BBCodeTag, content: &str, result: &mut String) {
-        // 检查是否是 table 标签
-        if tag.base_name() == "table" {
-            result.push_str(tag.to_html_open());
-            result.push_str(&self.format_table(content));
-            result.push_str(tag.to_html_close());
-            return;
-        }
-
-        // 处理带参数的标签
-        if let BBCodeTag::Parameterized(param) = tag {
-            match param {
-                ParamTag::Url(href) => {
-                    let processed = Self::new(content).parse();
-                    result.push_str(&format!("<a href=\"{}\">", href));
-                    result.push_str(&processed);
-                    result.push_str("</a>");
-                    return;
-                }
-                ParamTag::Collapse(title) => {
-                    let processed = Self::new(content).parse();
-                    result.push_str(&format!("[{}] ", title));
-                    result.push_str(&processed);
-                    result.push_str(&format!(" [/{}]", title));
-                    return;
-                }
-                ParamTag::Size(_) => {
-                    // 将 size 标签视为加粗处理
-                    let processed = Self::new(content).parse();
-                    result.push_str("<b>");
-                    result.push_str(&processed);
-                    result.push_str("</b>");
-                    return;
-                }
-                _ => {}
+        match tag {
+            // 表格 → <table>（前后加段落分隔）
+            _ if tag.base_name() == "table" => {
+                result.push_str(&format!("\n\n{}\n\n", self.format_rich_table(content)));
+                return;
             }
+            // [url=href] → <a>
+            BBCodeTag::Parameterized(ParamTag::Url(href)) => {
+                let processed = Self::new(content).parse();
+                result.push_str(&format!(
+                    "<a href=\"{}\">{}</a>",
+                    escape_html_attr(href),
+                    processed
+                ));
+                return;
+            }
+            // [collapse=title] → <details>（前后加段落分隔）
+            BBCodeTag::Parameterized(ParamTag::Collapse(title)) => {
+                let processed = Self::new(content).parse();
+                result.push_str(&format!(
+                    "\n\n<details><summary>{}</summary>{}</details>\n\n",
+                    escape_html(title),
+                    processed
+                ));
+                return;
+            }
+            // [size=N] → <b>
+            BBCodeTag::Parameterized(ParamTag::Size(_)) => {
+                let processed = Self::new(content).parse();
+                result.push_str(&format!("<b>{}</b>", processed));
+                return;
+            }
+            // [color]/[pid]/[uid]/[align] → 直接输出内容
+            BBCodeTag::Parameterized(ParamTag::Color(_))
+            | BBCodeTag::Parameterized(ParamTag::Pid(_))
+            | BBCodeTag::Parameterized(ParamTag::Uid(_))
+            | BBCodeTag::Parameterized(ParamTag::Align(_)) => {
+                result.push_str(&Self::new(content).parse());
+                return;
+            }
+            // 贴纸 → 移除
+            BBCodeTag::Parameterized(ParamTag::Sticker(_)) => return,
+            // 表格单元格（由 format_rich_table 处理）
+            BBCodeTag::Parameterized(ParamTag::TableCell(_)) => {
+                result.push_str(&Self::new(content).parse());
+                return;
+            }
+            _ => {}
         }
 
-        // 检查是否是无参数的 url 标签
+        // 无参数 url → <a>
         if tag.base_name() == "url" {
             let processed = Self::new(content).parse();
-            result.push_str(&format!("<a href=\"{}\">", processed));
-            result.push_str(&processed);
-            result.push_str("</a>");
+            result.push_str(&format!(
+                "<a href=\"{}\">{}</a>",
+                escape_html_attr(&processed),
+                processed
+            ));
             return;
         }
 
-        // 普通标签：递归处理内容
+        // [quote] → <blockquote>（前后加段落分隔）
+        if tag.base_name() == "quote" {
+            let processed = Self::new(content).parse();
+            result.push_str(&format!("\n\n<blockquote>{}</blockquote>\n\n", processed));
+            return;
+        }
+
+        // 普通标签
         let processed = Self::new(content).parse();
         result.push_str(tag.to_html_open());
         result.push_str(&processed);
         result.push_str(tag.to_html_close());
     }
 
-    /// 在指定位置解析开始标签
-    fn parse_opening_tag_at(&self, start: usize) -> Option<(BBCodeTag, usize)> {
-        if start >= self.chars.len() || self.chars[start] != '[' {
-            return None;
-        }
-
-        // 查找结束的 ']'
-        let end = (start + 1..self.chars.len()).find(|&i| self.chars[i] == ']')?;
-
-        let tag_content: String = self.chars[start + 1..end].iter().collect();
-        BBCodeTag::parse(&tag_content).map(|tag| (tag, end + 1))
-    }
-
-    /// 查找匹配的结束标签
-    fn find_closing_tag(&self, tag: &BBCodeTag) -> Option<usize> {
-        let tag_name = tag.base_name();
-        let mut pos = self.pos;
-        let mut depth = 1;
-
-        while pos < self.chars.len() {
-            if self.chars[pos] == '[' {
-                if self.is_closing_tag_at(pos, tag_name) {
-                    depth -= 1;
-                    if depth == 0 {
-                        return Some(pos);
-                    }
-                } else if self.is_same_opening_tag_at(pos, tag_name) {
-                    depth += 1;
-                }
-            }
-            pos += 1;
-        }
-
-        None
-    }
-
-    /// 检查指定位置是否是目标结束标签
-    fn is_closing_tag_at(&self, pos: usize, expected: &str) -> bool {
-        if pos + 2 >= self.chars.len() {
-            return false;
-        }
-        if self.chars[pos] != '[' || self.chars[pos + 1] != '/' {
-            return false;
-        }
-
-        // 查找 ']'
-        let end = (pos + 2..self.chars.len()).find(|&i| self.chars[i] == ']');
-
-        if let Some(end) = end {
-            let tag_content: String = self.chars[pos + 2..end].iter().collect();
-            tag_content.eq_ignore_ascii_case(expected)
-        } else {
-            false
-        }
-    }
-
-    /// 检查指定位置是否是相同的开始标签
-    fn is_same_opening_tag_at(&self, pos: usize, expected: &str) -> bool {
-        if let Some((tag, _)) = self.parse_opening_tag_at(pos) {
-            tag.base_name() == expected
-        } else {
-            false
-        }
-    }
-
-    /// 提取指定范围的内容
-    fn extract_content(&self, start: usize, end: usize) -> String {
-        self.chars[start..end].iter().collect()
-    }
-
-    /// 跳过结束标签
-    fn skip_closing_tag_at(&mut self, pos: usize) {
-        self.pos = pos;
-        if self.pos < self.chars.len() && self.chars[self.pos] == '[' {
-            while self.pos < self.chars.len() && self.chars[self.pos] != ']' {
-                self.pos += 1;
-            }
-            if self.pos < self.chars.len() {
-                self.pos += 1;
-            }
-        }
-    }
-
-    // ========== 表格格式化 ==========
-
-    /// 格式化表格内容
-    fn format_table(&self, content: &str) -> String {
-        use tabled::{Table, settings::Style};
-
-        // 快速检查
-        if !content.contains("[tr]") || !content.contains("[td") {
-            return String::new();
-        }
-
+    /// 格式化 Rich Message 表格
+    fn format_rich_table(&self, content: &str) -> String {
         static TR_REGEX: OnceLock<Regex> = OnceLock::new();
         static TD_REGEX: OnceLock<Regex> = OnceLock::new();
 
@@ -532,7 +436,6 @@ impl BBCodeParser {
                         Self::new(cell_content).parse().trim().to_string()
                     })
                     .collect();
-
                 if cells.is_empty() { None } else { Some(cells) }
             })
             .collect();
@@ -541,8 +444,98 @@ impl BBCodeParser {
             return String::new();
         }
 
-        let mut table = Table::from_iter(rows);
-        table.with(Style::empty());
-        table.to_string()
+        let mut html = String::from("<table>");
+        for (i, row) in rows.iter().enumerate() {
+            html.push_str("<tr>");
+            for cell in row {
+                if i == 0 {
+                    html.push_str(&format!("<td><b>{}</b></td>", cell));
+                } else {
+                    html.push_str(&format!("<td>{}</td>", cell));
+                }
+            }
+            html.push_str("</tr>");
+        }
+        html.push_str("</table>");
+        html
     }
+
+    // ========== 辅助方法 ==========
+
+    fn parse_opening_tag_at(&self, start: usize) -> Option<(BBCodeTag, usize)> {
+        if start >= self.chars.len() || self.chars[start] != '[' {
+            return None;
+        }
+        let end = (start + 1..self.chars.len()).find(|&i| self.chars[i] == ']')?;
+        let tag_content: String = self.chars[start + 1..end].iter().collect();
+        BBCodeTag::parse(&tag_content).map(|tag| (tag, end + 1))
+    }
+
+    fn find_closing_tag(&self, tag: &BBCodeTag) -> Option<usize> {
+        let tag_name = tag.base_name();
+        let mut pos = self.pos;
+        let mut depth = 1;
+        while pos < self.chars.len() {
+            if self.chars[pos] == '[' {
+                if self.is_closing_tag_at(pos, tag_name) {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some(pos);
+                    }
+                } else if self.is_same_opening_tag_at(pos, tag_name) {
+                    depth += 1;
+                }
+            }
+            pos += 1;
+        }
+        None
+    }
+
+    fn is_closing_tag_at(&self, pos: usize, expected: &str) -> bool {
+        if pos + 2 >= self.chars.len() {
+            return false;
+        }
+        if self.chars[pos] != '[' || self.chars[pos + 1] != '/' {
+            return false;
+        }
+        let end = (pos + 2..self.chars.len()).find(|&i| self.chars[i] == ']');
+        if let Some(end) = end {
+            let tag_content: String = self.chars[pos + 2..end].iter().collect();
+            tag_content.eq_ignore_ascii_case(expected)
+        } else {
+            false
+        }
+    }
+
+    fn is_same_opening_tag_at(&self, pos: usize, expected: &str) -> bool {
+        if let Some((tag, _)) = self.parse_opening_tag_at(pos) {
+            tag.base_name() == expected
+        } else {
+            false
+        }
+    }
+
+    fn extract_content(&self, start: usize, end: usize) -> String {
+        self.chars[start..end].iter().collect()
+    }
+
+    fn skip_closing_tag_at(&mut self, pos: usize) {
+        self.pos = pos;
+        if self.pos < self.chars.len() && self.chars[self.pos] == '[' {
+            while self.pos < self.chars.len() && self.chars[self.pos] != ']' {
+                self.pos += 1;
+            }
+            if self.pos < self.chars.len() {
+                self.pos += 1;
+            }
+        }
+    }
+}
+
+/// 转义 HTML 属性值
+fn escape_html_attr(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }

@@ -8,6 +8,13 @@ pub struct ProcessorResultMedia {
     pub original_urls: Option<Vec<String>>,
 }
 
+/// Rich Message 处理结果
+#[derive(Debug, Clone)]
+pub struct ProcessorResultRich {
+    /// Rich Message HTML 内容
+    pub html: String,
+}
+
 /// 统一的处理器结果类型
 #[derive(Debug, Clone)]
 pub enum ProcessorResult {
@@ -15,6 +22,8 @@ pub enum ProcessorResult {
     Text(String),
     /// 图片结果（包含图片URL和描述文本）
     Media(ProcessorResultMedia),
+    /// Rich Message 结构化内容
+    Rich(ProcessorResultRich),
 }
 
 /// 统一的处理器错误类型
