@@ -50,33 +50,13 @@ async fn main() {
     dotenv().ok();
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
+    let token = get_env_var("TELEGRAM_TOKEN").expect("TELEGRAM_TOKEN must be set");
     let bot = match get_env_var(TELEGRAM_PROXY_ENV_VAR) {
-        // 如果成功读取到环境变量
-        Some(proxy_url) => {
-            log::info!(
-                "Using telegram proxy from '{}': {}",
-                TELEGRAM_PROXY_ENV_VAR,
-                proxy_url
-            );
-
-            // 创建一个 reqwest 代理
-            let proxy = reqwest::Proxy::all(&proxy_url)
-                .expect("Failed to create proxy. Is the URL format correct?");
-
-            // 创建一个配置了代理的 reqwest 客户端
-            let client = reqwest::Client::builder()
-                .proxy(proxy)
-                .build()
-                .expect("Failed to build reqwest client");
-
-            // 使用 Bot::with_client 来初始化 Bot
-            Bot::from_env_with_client(client)
+        Some(_) => {
+            let client = common::build_reqwest_client_with_proxy(TELEGRAM_PROXY_ENV_VAR);
+            Bot::with_client(token, client)
         }
-        // 如果没有设置该环境变量
-        None => {
-            // 正常初始化 Bot，它会使用默认的客户端（不带代理）
-            Bot::from_env()
-        }
+        None => Bot::new(token),
     };
 
     log::info!("Bot started. Listening for messages...");

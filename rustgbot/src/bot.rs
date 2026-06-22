@@ -576,6 +576,172 @@ fn is_pixiv_related_url(url: &str) -> bool {
     PIXIV_DOMAINS.iter().any(|domain| url.contains(domain)) || env_domain_check
 }
 
+// ==================== frankenstein: sendRichMessage 支持 (Bot API 10.1+) ====================
+
+use frankenstein::AsyncTelegramApi;
+use frankenstein::types::ChatId as FrankChatId;
+use frankenstein::types::ReplyParameters as FrankReplyParameters;
+use std::sync::OnceLock;
+
+/// 全局 frankenstein Bot 实例（懒初始化）
+static FRANKENSTEIN_BOT: OnceLock<frankenstein::client_reqwest::Bot> = OnceLock::new();
+
+/// 初始化 frankenstein Bot，复用 common 的代理配置
+fn get_frankenstein_bot() -> &'static frankenstein::client_reqwest::Bot {
+    FRANKENSTEIN_BOT.get_or_init(|| {
+        dotenv::dotenv().ok();
+        let token = std::env::var("TELEGRAM_TOKEN").expect("TELEGRAM_TOKEN must be set");
+        let client = common::build_reqwest_client();
+        let api_url = format!("https://api.telegram.org/bot{}/", token);
+        frankenstein::client_reqwest::Bot::builder()
+            .api_url(api_url)
+            .client(client)
+            .build()
+    })
+}
+
+/// 发送 Rich Message 的封装函数
+///
+/// # 参数
+/// - `chat_id`: 目标聊天 ID（teloxide 的 ChatId）
+/// - `message_id`: 回复的消息 ID（可选）
+/// - `markdown`: Rich Markdown 格式的内容（参考 Bot API 10.1 Rich Markdown style）
+/// - `html`: Rich HTML 格式的内容（与 markdown 二选一）
+/// - `is_rtl`: 是否从右到左显示
+///
+/// # 示例
+/// ```ignore
+/// use crate::bot;
+///
+/// // 使用 Markdown 格式
+/// bot::send_rich_message(
+///     chat_id,
+///     Some(message_id),
+///     Some("# Hello\n**world**"),
+///     None,
+///     false,
+/// ).await?;
+///
+/// // 使用 HTML 格式
+/// bot::send_rich_message(
+///     chat_id,
+///     Some(message_id),
+///     None,
+///     Some("<h1>Hello</h1><p><b>world</b></p>"),
+///     false,
+/// ).await?;
+/// ```
+pub async fn send_rich_message(
+    chat_id: ChatId,
+    message_id: Option<MessageId>,
+    markdown: Option<&str>,
+    html: Option<&str>,
+    is_rtl: bool,
+) -> Result<()> {
+    let frank_bot = get_frankenstein_bot();
+
+    // 构建 InputRichMessage - markdown 和 html 二选一
+    let rich_message = match (markdown, html) {
+        (Some(md), _) => frankenstein::rich_message::InputRichMessage::builder()
+            .markdown(md.to_string())
+            .is_rtl(is_rtl)
+            .build(),
+        (_, Some(h)) => frankenstein::rich_message::InputRichMessage::builder()
+            .html(h.to_string())
+            .is_rtl(is_rtl)
+            .build(),
+        _ => {
+            return Err(anyhow::anyhow!("Either markdown or html must be provided"));
+        }
+    };
+
+    // 构建 SendRichMessageParams
+    let frank_chat_id = FrankChatId::Integer(chat_id.0);
+    let reply_params =
+        message_id.map(|mid| FrankReplyParameters::builder().message_id(mid.0).build());
+
+    let params = frankenstein::methods::SendRichMessageParams::builder()
+        .chat_id(frank_chat_id)
+        .rich_message(rich_message)
+        .maybe_reply_parameters(reply_params)
+        .build();
+
+    log::debug!(
+        "send_rich_message: chat_id={}, markdown={:?}, html={:?}, is_rtl={}",
+        chat_id.0,
+        markdown.map(|s| &s[..s.len().min(50)]),
+        html.map(|s| &s[..s.len().min(50)]),
+        is_rtl,
+    );
+
+    match frank_bot.send_rich_message(&params).await {
+        Ok(_) => {
+            log::info!("Successfully sent rich message to chat {}", chat_id.0);
+            Ok(())
+        }
+        Err(e) => {
+            log::error!("Failed to send rich message to chat {}: {:?}", chat_id.0, e);
+            Err(anyhow::anyhow!("Failed to send rich message: {:?}", e))
+        }
+    }
+}
+
+/// 发送 Rich Message Draft（流式部分消息，用于 AI 生成内容的实时预览）
+///
+/// 注意：draft 是临时的 30 秒预览，最终需要调用 send_rich_message 发送完整消息。
+///
+/// # 参数
+/// - `chat_id`: 目标私聊 ID（仅支持私聊）
+/// - `draft_id`: 草稿标识符，相同 draft_id 的更新会带动画过渡
+/// - `markdown`: Rich Markdown 格式的内容
+/// - `html`: Rich HTML 格式的内容
+pub async fn send_rich_message_draft(
+    chat_id: ChatId,
+    draft_id: i64,
+    markdown: Option<&str>,
+    html: Option<&str>,
+) -> Result<()> {
+    let frank_bot = get_frankenstein_bot();
+
+    let rich_message = match (markdown, html) {
+        (Some(md), _) => frankenstein::rich_message::InputRichMessage::builder()
+            .markdown(md.to_string())
+            .build(),
+        (_, Some(h)) => frankenstein::rich_message::InputRichMessage::builder()
+            .html(h.to_string())
+            .build(),
+        _ => {
+            return Err(anyhow::anyhow!("Either markdown or html must be provided"));
+        }
+    };
+
+    let params = frankenstein::methods::SendRichMessageDraftParams::builder()
+        .chat_id(chat_id.0)
+        .draft_id(draft_id)
+        .rich_message(rich_message)
+        .build();
+
+    log::debug!(
+        "send_rich_message_draft: chat_id={}, draft_id={}",
+        chat_id.0,
+        draft_id,
+    );
+
+    match frank_bot.send_rich_message_draft(&params).await {
+        Ok(_) => {
+            log::debug!("Successfully sent rich message draft to chat {}", chat_id.0);
+            Ok(())
+        }
+        Err(e) => {
+            log::error!("Failed to send rich message draft: {:?}", e);
+            Err(anyhow::anyhow!(
+                "Failed to send rich message draft: {:?}",
+                e
+            ))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -587,7 +753,8 @@ mod tests {
     impl MockBot {
         fn bot() -> Bot {
             dotenv::dotenv().ok();
-            Bot::from_env()
+            let token = std::env::var("TELEGRAM_TOKEN").expect("TELEGRAM_TOKEN must be set");
+            Bot::new(token)
         }
         fn get_chat_id() -> ChatId {
             ChatId(

@@ -17,6 +17,7 @@ common = { path = "../common" }
 
 # External dependencies - using workspace versions
 teloxide = { workspace = true }
+frankenstein = { workspace = true }
 log = { workspace = true }
 env_logger = { workspace = true }
 tokio = { workspace = true }

@@ -92,6 +92,25 @@ pub fn get_env_var(name: &str) -> Option<String> {
     std::env::var(name).ok()
 }
 
+/// 从环境变量 TELEGRAM_PROXY 构建 reqwest 客户端（含可选代理）
+/// 如果未设置代理环境变量，返回默认客户端
+pub fn build_reqwest_client() -> reqwest::Client {
+    build_reqwest_client_with_proxy("TELEGRAM_PROXY")
+}
+
+/// 从指定环境变量构建 reqwest 客户端（含可选代理）
+pub fn build_reqwest_client_with_proxy(env_var: &str) -> reqwest::Client {
+    let mut builder = reqwest::Client::builder();
+    if let Some(proxy_url) = get_env_var(env_var) {
+        log::info!("Using proxy from '{}': {}", env_var, proxy_url);
+        match reqwest::Proxy::all(&proxy_url) {
+            Ok(proxy) => builder = builder.proxy(proxy),
+            Err(e) => log::warn!("Failed to create proxy from '{}': {}", proxy_url, e),
+        }
+    }
+    builder.build().expect("Failed to build reqwest client")
+}
+
 /// 使用url库安全地拼接URL，避免斜杠重复
 pub fn join_url(base: &str, path: &str) -> Result<String> {
     let base_url = Url::parse(base)?;
