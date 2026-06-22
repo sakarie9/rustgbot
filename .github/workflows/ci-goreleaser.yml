@@ -36,10 +36,14 @@ jobs:
           args: release --clean --snapshot
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BRANCH: ${{ github.ref_name }}
       - name: Push Docker image
         run: |
-          docker push ghcr.io/${{ github.repository }} --all-tags
+          docker push ghcr.io/${{ github.repository }}:${{ github.ref_name }}-amd64
+          docker push ghcr.io/${{ github.repository }}:${{ github.ref_name }}-arm64
+          docker buildx imagetools create \
+            --tag ghcr.io/${{ github.repository }}:${{ github.ref_name }} \
+            ghcr.io/${{ github.repository }}:${{ github.ref_name }}-amd64 \
+            ghcr.io/${{ github.repository }}:${{ github.ref_name }}-arm64
       - name: Upload assets
         uses: actions/upload-artifact@v7
         with:
